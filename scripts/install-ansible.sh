@@ -32,10 +32,12 @@ cd "$HOME/nudger-vm/infra/k8s_ansible"
 echo "➡️ Ajout des variables d’environnement (fork safety / proxy)"
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 export no_proxy="*"
-
-# 7. Lancer un premier playbook en mode local (optionnel)
-echo "➡️ Test Ansible en mode local (Vault init)..."
-ansible-playbook -i localhost, -c local playbooks/000-init-vault.yml || true
-
+# 7. Créer un placeholder pour Ansible Vault si absent
+VAULT_PASS_FILE="$HOME/nudger-vm/infra/k8s_ansible/.vault_pass.txt"
+if [ ! -f "$VAULT_PASS_FILE" ]; then
+  echo "changeme" > "$VAULT_PASS_FILE"
+  chmod 600 "$VAULT_PASS_FILE"
+fi
 echo "✅ Ansible installé et prêt. Active ton venv avec :"
+
 echo "   source ~/ansible_venv/bin/activate"
