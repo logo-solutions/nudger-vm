@@ -1,0 +1,9 @@
+---
+# Liste des ports SSH autorisés
+secure_ssh_port: 22
+
+# Liste des IPs autorisées (par défaut tout le monde → ajuster si besoin)
+secure_ssh_allowed_ips: "any"
+
+# Activer fail2ban
+secure_ssh_fail2ban_enabled: true

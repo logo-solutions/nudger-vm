@@ -1,0 +1,23 @@
+---
+- name: Sécuriser la configuration SSH
+  block:
+    - name: Désactiver l'authentification par mot de passe
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+        backup: yes
+
+    - name: Root uniquement via clé (pas de mot de passe)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin prohibit-password'
+        state: present
+        backup: yes
+
+    - name: Forcer un rechargement du service SSH
+      service:
+        name: sshd
+        state: reloaded

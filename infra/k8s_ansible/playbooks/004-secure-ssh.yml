@@ -1,0 +1,6 @@
+---
+- name: Sécuriser le bastion SSH
+  hosts: bastion
+  become: true
+  roles:
+    - secure-ssh
