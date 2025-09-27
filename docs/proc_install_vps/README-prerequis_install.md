@@ -1,0 +1,1 @@
+ ssh-keygen -t ed25519 -C "deploy-key-nudger-002" -f ~/.ssh/id_github_nudger_002

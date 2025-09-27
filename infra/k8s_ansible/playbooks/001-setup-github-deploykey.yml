@@ -1,0 +1,50 @@
+---
+- name: Générer et configurer une clé SSH GitHub sur la VM
+  hosts: master1
+  become: true
+  vars:
+    ssh_key_path: "/root/.ssh/id_github_vm"
+
+  tasks:
+    - name: Créer dossier .ssh avec bonnes permissions
+      file:
+        path: "/root/.ssh"
+        state: directory
+        mode: "0700"
+        owner: root
+        group: root
+
+    - name: Générer une nouvelle clé SSH si absente
+      openssh_keypair:
+        path: "{{ ssh_key_path }}"
+        type: ed25519
+        comment: "github-deploy-key-nudger"
+        size: 256
+        mode: "0600"
+      register: ssh_key
+      when: not (ssh_key_path is file)
+
+    - name: Forcer permissions sur la clé privée
+      file:
+        path: "{{ ssh_key_path }}"
+        mode: "0600"
+      when: ssh_key is defined and ssh_key.private_key is defined
+
+    - name: Télécharger la clé publique en local (artifacts/)
+      fetch:
+        src: "{{ ssh_key_path }}.pub"
+        dest: "{{ lookup('env','HOME') }}/.ansible/artifacts/{{ inventory_hostname }}/id_github_vm.pub"
+        flat: true
+      when: ssh_key is defined
+
+    - name: Configurer ~/.ssh/config pour GitHub
+      copy:
+        dest: "/root/.ssh/config"
+        content: |
+          Host github.com
+            User git
+            IdentityFile {{ ssh_key_path }}
+            StrictHostKeyChecking accept-new
+        owner: root
+        group: root
+        mode: "0600"

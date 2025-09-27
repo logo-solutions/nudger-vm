@@ -1,0 +1,24 @@
+---
+- name: Test des rôles vault et vault-users
+  hosts: k8s_masters
+  become: true
+  gather_facts: false
+
+  collections:
+    - community.hashi_vault
+
+  vars:
+    vault_addr: "http://127.0.0.1:8200"
+    vault_root_token: "root-token-de-test"   # ⚠️ à remplacer
+    users_k8s:
+      - { name: "alice" }
+      - { name: "bob" }
+
+  roles:
+    - vault
+    - vault-users
+
+  tasks:
+    - name: Debug des mots de passe utilisateurs récupérés
+      debug:
+        var: user_passwords
