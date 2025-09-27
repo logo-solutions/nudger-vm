@@ -21,21 +21,21 @@
         group: root
         mode: '0600'
       when: key_stat.stat.exists
-  - name: Déployer APP_ID
-    copy:
-      dest: "{{ github_app_secrets_dir }}/APP_ID"
-      content: "{{ github_app_id }}"
-      owner: root
-      group: root
-      mode: '0600'
-
-    - name: Déployer INSTALLATION_ID
+    - name: Déployer APP_ID
       copy:
-        dest: "{{ github_app_secrets_dir }}/INSTALLATION_ID"
-        content: "{{ github_app_installation_id }}"
+        dest: "{{ github_app_secrets_dir }}/APP_ID"
+        content: "{{ github_app_id }}"
         owner: root
         group: root
         mode: '0600'
+
+      - name: Déployer INSTALLATION_ID
+        copy:
+          dest: "{{ github_app_secrets_dir }}/INSTALLATION_ID"
+          content: "{{ github_app_installation_id }}"
+          owner: root
+          group: root
+          mode: '0600'
 
       - name: Générer un JWT avec Ruby (fallback pour Ansible 2.10)
         command: |
