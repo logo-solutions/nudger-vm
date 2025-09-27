@@ -23,7 +23,7 @@
       when: key_stat.stat.exists
 
     - name: Générer un JWT avec Ruby (fallback pour Ansible 2.10)
-        command: |
+      command: |
         ruby -ropenssl -rjson -rtime -rjwt -e '
           app_id = File.read("{{ github_app_app_id_file }}").strip
           pem    = File.read("{{ github_app_private_key_file }}")
