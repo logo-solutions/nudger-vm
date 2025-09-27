@@ -1,9 +1,10 @@
 ---
-github_app_dir: /etc/github-app
-github_app_name: nudger-vm
-
-# Chemin vers les secrets dans le repo local
+# Répertoire où doivent être stockés les secrets GitHub App
 github_app_secrets_dir: "/etc/github-app"
+
+# Valeurs logiques (doivent être définies dans group_vars ou inventaire)
+github_app_id: ""
+github_app_installation_id: ""
 
 # Fichiers secrets attendus
 github_app_app_id_file: "{{ github_app_secrets_dir }}/APP_ID"
