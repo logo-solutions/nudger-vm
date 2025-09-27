@@ -1,0 +1,40 @@
+---
+- name: Enable IPv4 forwarding
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    state: present
+    sysctl_set: true
+    reload: true
+
+- name: Assurer nftables installé/actif (si disponible)
+  package:
+    name: nftables
+    state: present
+
+- name: Activer le service nftables (optionnel, mais utile pour persistance globale)
+  service:
+    name: nftables
+    enabled: yes
+  ignore_errors: true
+
+- name: Déployer le script egress NAT (nftables)
+  copy:
+    src: nft-egress-nat.sh
+    dest: "{{ egress_nat_script_path }}"
+    mode: "0755"
+
+- name: Déployer le service systemd egress-nat
+  template:
+    src: egress-nat.service.j2
+    dest: "/etc/systemd/system/{{ egress_nat_unit_name }}"
+
+- name: recharger systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Activer + démarrer egress-nat
+  systemd:
+    name: "{{ egress_nat_unit_name }}"
+    enabled: yes
+    state: started

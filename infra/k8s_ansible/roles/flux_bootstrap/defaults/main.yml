@@ -1,0 +1,30 @@
+---
+# --- Cluster / Kubeconfig ---
+kubeconfig: "/etc/kubernetes/admin.conf"
+flux_kube_context:
+flux_namespace: "flux-system"
+# --- Flux CLI ---
+flux_version: "2.3.0"
+flux_bin: "/usr/local/bin/flux"
+# --- Git / Repo cible ---
+github_owner: "TON_USER_OU_ORG" # à surcharger
+github_repo: "gitops-live" # à surcharger
+github_branch: "main"
+# --- Auth mode: 'pat' (par défaut) ou 'ssh' ---
+git_auth_mode: "pat"
+# Si mode PAT
+github_pat: "{{ vault_github_pat | default('') }}"
+# Si mode SSH (Deploy Key)
+ssh_key_private_path: "k8s_ansible/secrets/deploy_key"
+ssh_key_public_path: "k8s_ansible/secrets/deploy_key.pub"
+# Secret et intervals
+git_secret_name: "gitops-credentials"
+git_sync_interval: "1m"
+kustomize_interval: "1m"
+# Environnements cibles (répertoires attendus dans le repo Git: ./gitops/clusters/<env>)
+gitops_envs:
+  - "staging"
+  - "prod"
+# URL Git selon mode (ne touche pas si tu gardes PAT)
+git_https_url: "https://github.com/{{ github_owner }}/{{ github_repo }}.git"
+git_ssh_url: "git@github.com:{{ github_owner }}/{{ github_repo }}.git"

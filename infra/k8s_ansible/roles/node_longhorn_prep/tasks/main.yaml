@@ -1,0 +1,128 @@
+---
+- name: Install required packages for Longhorn & tooling
+  apt:
+    name:
+      - nfs-common
+      - open-iscsi
+      - jq
+      - curl
+      - socat
+      - multipath-tools
+    state: present
+    update_cache: yes
+
+- name: Disable multipathd service (conflicts with Longhorn)
+  systemd:
+    name: multipathd
+    enabled: false
+    state: stopped
+
+- name: Ensure dm_crypt module is loaded now
+  modprobe:
+    name: dm_crypt
+    state: present
+
+- name: Ensure iscsid running
+  ansible.builtin.service:
+    name: iscsid
+    state: started
+    enabled: true
+
+- name: Ensure iSCSI kernel modules present
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - iscsi_tcp
+    - libiscsi
+    - scsi_transport_iscsi
+
+- name: Persist iSCSI modules across reboots
+  copy:
+    dest: /etc/modules-load.d/iscsi.conf
+    content: |
+      iscsi_tcp
+      libiscsi
+      scsi_transport_iscsi
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable open-iscsi service (in addition to iscsid)
+  ansible.builtin.service:
+    name: open-iscsi
+    state: started
+    enabled: true
+
+- name: Persist dm_crypt module across reboots
+  copy:
+    dest: /etc/modules-load.d/dm_crypt.conf
+    content: "dm_crypt\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Configure sysctl for kube/longhorn
+  copy:
+    dest: /etc/sysctl.d/99-kubernetes.conf
+    content: |
+      net.ipv4.ip_forward = 1
+      fs.inotify.max_user_instances = 8192
+      fs.inotify.max_user_watches  = 1048576
+  notify: Reload sysctl
+
+- name: Ensure swap is off (runtime)
+  command: swapoff -a
+  when: ansible_swaptotal_mb|default(0) | int > 0
+
+- name: Ensure swap is disabled (fstab)
+  replace:
+    path: /etc/fstab
+    regexp: '^\s*([^#]\S+)\s+\S+\s+swap\s+\S+'
+    replace: '# \1 swap disabled for Kubernetes'
+  register: swap_fstab
+  changed_when: swap_fstab.msg is defined
+
+# roles/nodes_longhorn_prereqs/tasks/main.yml
+- name: "Longhorn prereqs | Installer nfs-common"
+  ansible.builtin.package:
+    name: nfs-common
+    state: present
+  when: ansible_os_family in ['Debian', 'Ubuntu']
+  tags: [longhorn, prereqs]
+
+- name: "Longhorn prereqs | Désactiver + masquer multipathd"
+  ansible.builtin.systemd:
+    name: multipathd
+    state: stopped
+    enabled: false
+    masked: true          # évite un redémarrage auto via udev
+  tags: [longhorn, prereqs]
+
+# (Optionnel) désinstaller l'outil si tu veux être radical
+# - name: "Longhorn prereqs | Retirer multipath-tools (optionnel)"
+#   ansible.builtin.package:
+#     name: multipath-tools
+#     state: absent
+#   tags: [longhorn, prereqs]
+
+- name: "Longhorn prereqs | dm_crypt chargé au boot"
+  ansible.builtin.lineinfile:
+    path: /etc/modules-load.d/dm_crypt.conf
+    line: dm_crypt
+    create: true
+    mode: '0644'
+  tags: [longhorn, prereqs]
+
+- name: "Longhorn prereqs | Charger dm_crypt maintenant"
+  community.general.modprobe:
+    name: dm_crypt
+    state: present
+  tags: [longhorn, prereqs]
+
+- name: "Longhorn prereqs | Vérifier dm_crypt"
+  ansible.builtin.shell: "lsmod | grep -q '^dm_crypt'"
+  register: dmcrypt_check
+  changed_when: false
+  failed_when: dmcrypt_check.rc != 0
+  tags: [longhorn, prereqs]

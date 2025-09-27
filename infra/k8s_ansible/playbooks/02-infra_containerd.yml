@@ -1,0 +1,9 @@
+- hosts: k8s_masters
+  become: true
+  collections:
+    - ansible.posix
+    - community.general
+  roles:
+    - containerd
+  tags:
+    - "02"

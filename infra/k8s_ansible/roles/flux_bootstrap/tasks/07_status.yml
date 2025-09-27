@@ -1,0 +1,17 @@
+---
+- name: Get Kustomizations
+  ansible.builtin.command: "{{ flux_bin }} get kustomizations -A"
+  environment: { KUBECONFIG: "{{ kubeconfig_effective | default(kubeconfig) }}" }
+  register: ks
+  failed_when: false
+- ansible.builtin.debug: { var: ks.stdout }
+- name: Get GitRepositories
+  ansible.builtin.command: "{{ flux_bin }} get sources git -n {{ flux_namespace }}"
+  environment: { KUBECONFIG: "{{ kubeconfig_effective | default(kubeconfig) }}" }
+  register: gr
+  failed_when: false
+- ansible.builtin.debug: { var: gr.stdout }
+- name: Quick API check
+  kubernetes.core.k8s_info:
+    kind: Namespace
+    kubeconfig: "{{ kubeconfig_effective | default(kubeconfig) }}"

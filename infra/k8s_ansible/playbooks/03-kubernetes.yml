@@ -1,0 +1,16 @@
+---
+- name: Préparation Kubernetes
+  hosts: all
+  gather_facts: true
+
+  pre_tasks:
+    - name: Affiche les vars k8s
+      ansible.builtin.debug:
+        msg:
+          - "k8s_version={{ k8s_version | default('UNDEF') }}"
+          - "kubernetes_packages={{ kubernetes_packages | default('UNDEF') }}"
+      tags: ["03", "debug"]
+
+  roles:
+    - role: kubernetes
+      tags: ["03"]

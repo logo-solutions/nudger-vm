@@ -1,0 +1,35 @@
+---
+# Résumé lisible
+- name: Show Kustomizations summary
+  ansible.builtin.command: >
+    {{ flux_bin | default('/usr/local/bin/flux') }} -n {{ flux_namespace | default('flux-system')
+    }} get kustomizations
+  environment: { KUBECONFIG: "{{ kubeconfig_path }}" }
+  register: ks
+  changed_when: false
+  failed_when: false
+- ansible.builtin.debug: { var: ks.stdout }
+- name: Show Git sources
+  ansible.builtin.command: >
+    {{ flux_bin | default('/usr/local/bin/flux') }} -n {{ flux_namespace | default('flux-system')
+    }} get sources git
+  environment: { KUBECONFIG: "{{ kubeconfig_path }}" }
+  register: gr
+  changed_when: false
+  failed_when: false
+- ansible.builtin.debug: { var: gr.stdout }
+# Liste "safe" des Ready/NotReady
+- name: List Kustomization readiness (safe)
+  kubernetes.core.k8s_info:
+    api_version: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    namespace: "{{ flux_namespace | default('flux-system') }}"
+  register: _allks
+- name: Print readiness per Kustomization
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.metadata.name }} : {{ (item.status.conditions | default([]) | selectattr('type',
+      'equalto', 'Ready') | list | first).status | default('Unknown') }} (reason={{
+      (item.status.conditions | default([]) | selectattr('type', 'equalto', 'Ready')
+      | list | first).reason | default('') }})
+  loop: "{{ _allks.resources | default([]) }}"

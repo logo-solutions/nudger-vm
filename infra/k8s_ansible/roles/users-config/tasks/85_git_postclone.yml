@@ -1,0 +1,24 @@
+---
+# 85 | git post-clone : config/fetch
+
+- name: "85 | git | fetch all branches (prune)"
+  become: true
+  become_user: "{{ item.0.name }}"
+  vars:
+    repo_dest: "{{ item.1.dest | default('/home/' ~ item.0.name ~ '/' ~ (item.1.dest_rel | default('repo'))) }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    # s'assurer qu'on récupère toutes les branches
+    git -C "{{ repo_dest }}" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+    # si clone shallow, tenter de déshallow
+    if git -C "{{ repo_dest }}" rev-parse --is-shallow-repository >/dev/null 2>&1; then
+      git -C "{{ repo_dest }}" fetch --unshallow || true
+    fi
+    # fetch complet + prune
+    git -C "{{ repo_dest }}" fetch --all --prune
+  args:
+    executable: /bin/bash
+  loop: "{{ users_k8s | subelements('git_repos', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }} ← {{ item.1.repo }}"
+  tags: [git]

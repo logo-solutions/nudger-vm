@@ -1,0 +1,15 @@
+---
+kubeconfig_path: /root/.kube/config
+flux_namespace: flux-system
+flux_bin: /usr/local/bin/flux
+# Exemple par défaut (à adapter)
+apps_kustomizations:
+  - name: ingress-nginx
+    path: ./clusters/lab/ingress-nginx.kustomization.yaml
+    wait: true
+    interval: 1m
+  - name: apps
+    path: ./clusters/lab/apps.kustomization.yaml
+    wait: true
+    interval: 1m
+    dependsOn: [ingress-nginx]

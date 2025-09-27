@@ -1,0 +1,38 @@
+---
+- name: Reconcile application Kustomizations (Flux)
+  ansible.builtin.command: >
+    {{ flux_bin | default('/usr/local/bin/flux') }} -n {{ flux_namespace | default('flux-system')
+    }} reconcile kustomization {{ item.name }} --with-source
+  environment: { KUBECONFIG: "{{ kubeconfig_path }}" }
+  register: _reco
+  changed_when: "'applied revision' in (_reco.stdout | default(''))"
+  failed_when: false
+  loop: "{{ apps_kustomizations }}"
+  loop_control: { label: "{{ item.name }}" }
+  tags:
+    - reconcile
+- name: Fail if any reconcile errored
+  ansible.builtin.assert:
+    that: "{{ item.rc == 0 }}"
+    fail_msg: "reconcile {{ item.item.name }} a échoué: {{ item.stderr | default(item.stdout)
+      }}"
+  loop: "{{ _reco.results }}"
+  tags:
+    - reconcile
+- name: Wait Kustomization Ready (strict mode)
+  kubernetes.core.k8s_info:
+    api_version: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    name: "{{ item.name }}"
+    namespace: "{{ flux_namespace | default('flux-system') }}"
+  register: _ks
+  until: >
+    (_ks.resources | length) > 0 and (_ks.resources[0].status.conditions | selectattr('type','equalto','Ready')
+    | list)[0].status == 'True'
+
+  retries: 30
+  delay: 5
+  loop: "{{ apps_kustomizations }}"
+  when: item.wait | default(true)
+  tags:
+    - reconcile

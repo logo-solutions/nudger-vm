@@ -1,0 +1,12 @@
+---
+- name: Configure passwordless sudo when requested
+  become: true
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ item.name }}"
+    content: "{{ item.name }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  loop: "{{ users_k8s }}"
+  when: item.sudo_nopass | default(false)

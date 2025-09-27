@@ -1,0 +1,5 @@
+---
+# infra/k8s_ansible/roles/actions_runner_crds/defaults/main.yml
+crds_url: "https://github.com/actions/actions-runner-controller/releases/download/gha-runner-scale-set-0.12.1/actions-runner-controller.yaml"
+crds_local_path: "/tmp/actions-runner-controller-crds.yaml"
+kubeconfig_path: "/etc/kubernetes/admin.conf"

@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  author: you
+  description: "Install Docker Engine (docker-ce) and plugins from Docker's official
+    apt repo."
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions: ["focal", "jammy", "noble"]
+    - name: Debian
+      versions: ["bullseye", "bookworm"]
+dependencies: []

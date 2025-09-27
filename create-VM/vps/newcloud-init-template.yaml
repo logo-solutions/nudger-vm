@@ -1,0 +1,38 @@
+#cloud-config
+ssh_pwauth: false
+chpasswd:
+  expire: false
+disable_root: false
+
+# Injecte nos host keys pour pouvoir pinner côté client
+write_files:
+  - path: /etc/ssh/ssh_host_ed25519_key
+    permissions: '0600'
+    owner: root:root
+    encoding: b64
+    content: ${HOST_PRIV_B64}
+  - path: /etc/ssh/ssh_host_ed25519_key.pub
+    permissions: '0644'
+    owner: root:root
+    content: ${HOST_PUB_STR}
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    permissions: '0644'
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin prohibit-password
+      PubkeyAuthentication yes
+      Protocol 2
+      KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org
+      Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+      HostKeyAlgorithms ssh-ed25519
+      LogLevel VERBOSE
+
+users:
+  - name: root
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ID_SSH_PUB}
+
+runcmd:
+  - systemctl restart ssh
+  - timedatectl set-ntp true

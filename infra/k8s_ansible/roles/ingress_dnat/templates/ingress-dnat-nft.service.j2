@@ -1,0 +1,14 @@
+[Unit]
+Description=Persist nftables DNAT to map 80/443 to NodePorts
+After=network-online.target kubelet.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/ingress-dnat-nft.sh {{ ingress_http_nodeport }} {{ ingress_https_nodeport }}
+# Nettoyage simple : on supprime les règles matching 80/443 → NodePorts
+ExecStop=/bin/sh -c 'nft -a list chain ip nat PREROUTING 2>/dev/null | awk "/tcp dport (80|443).*redirect to :/ {print \\$NF}" | awk "{print \\$2}" | xargs -r -I{} nft delete rule ip nat PREROUTING handle {} || true'
+
+[Install]
+WantedBy=multi-user.target

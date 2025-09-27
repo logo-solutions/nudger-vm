@@ -1,0 +1,16 @@
+---
+# Handlers for the kubernetes role
+
+# If unit files change in the future, we reload systemd too.
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+  listen: Restart kubelet
+- name: Restart kubelet service
+  ansible.builtin.service:
+    name: kubelet
+    state: restarted
+    enabled: true
+  become: true
+  listen: Restart kubelet

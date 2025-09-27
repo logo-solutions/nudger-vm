@@ -1,0 +1,65 @@
+---
+# 80 | git clone/update for all declared repos
+
+- name: "80 | git | ensure git is present"
+  become: true
+  ansible.builtin.package:
+    name: git
+    state: present
+  tags: [git, repos]
+
+# Hashé (-H) pour éviter le warning et matcher la known_hosts existante
+- name: "80 | git | add github.com to known_hosts (hashed)"
+  become: true
+  become_user: "{{ item.name }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    mkdir -p ~/.ssh
+    chmod 700 ~/.ssh
+    ssh-keyscan -t rsa,ed25519 -H github.com 2>/dev/null >> ~/.ssh/known_hosts
+    sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+    chmod 644 ~/.ssh/known_hosts
+  args:
+    executable: /bin/bash
+    creates: "/home/{{ item.name }}/.ssh/known_hosts"
+  loop: "{{ users_k8s }}"
+  loop_control: { label: "{{ item.name }}" }
+  tags: [git, repos]
+
+# Crée le répertoire de destination (propre ownership)
+- name: "80 | git | ensure repo dest exists"
+  become: true
+  vars:
+    repo_dest: "{{ item.1.dest | default('/home/' ~ item.0.name ~ '/' ~ (item.1.dest_rel | default('repo'))) }}"
+  ansible.builtin.file:
+    path: "{{ repo_dest }}"
+    state: directory
+    owner: "{{ item.0.name }}"
+    group: "{{ item.0.name }}"
+    mode: "0755"
+  loop: "{{ users_k8s | subelements('git_repos', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }} → {{ item.1.repo }}"
+  tags: [git, repos]
+
+# Clone / update via SSH (clé utilisateur id_vm_ed25519)
+- name: "80 | git | clone/update repos"
+  become: true
+  become_user: "{{ item.0.name }}"
+  vars:
+    repo_dest: "{{ item.1.dest | default('/home/' ~ item.0.name ~ '/' ~ (item.1.dest_rel | default('repo'))) }}"
+  ansible.builtin.git:
+    repo: "{{ item.1.repo }}"
+    dest: "{{ repo_dest }}"
+    version: "{{ item.1.version | default('main') }}"
+    update: true
+    force: false
+    depth: 1
+    accept_newhostkey: true
+    key_file: "/home/{{ item.0.name }}/.ssh/id_vm_ed25519"
+    recursive: "{{ item.1.submodules | default(true) }}"
+    track_submodules: "{{ item.1.submodules | default(true) }}"
+  loop: "{{ users_k8s | subelements('git_repos', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }} ← {{ item.1.repo }}"
+  tags: [git, repos]

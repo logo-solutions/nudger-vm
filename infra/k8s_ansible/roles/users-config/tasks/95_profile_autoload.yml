@@ -1,0 +1,17 @@
+---
+- name: Ensure custom profile is sourced in .bashrc (if present)
+  become: true
+  ansible.builtin.blockinfile:
+    path: "/home/{{ item.name }}/.bashrc"
+    marker: "# {mark} ANSIBLE profile_logo"
+    block: |
+      # Charge le profil Nudger si présent (silencieux)
+      if [ -f "$HOME/nudger/config-vm/profile_logo.sh" ]; then
+        # Ne rien faire en shell non-interactif
+        case "$-" in *i*) . "$HOME/nudger/config-vm/profile_logo.sh";; esac
+      fi
+    create: true
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0644"
+  loop: "{{ users_k8s }}"

@@ -1,0 +1,28 @@
+---
+- name: Ensure groups referenced by users_k8s exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ users_k8s | map(attribute='groups') | select('defined') | list | flatten | unique }}"
+  when: (users_k8s | length) > 0
+
+- name: Ensure users exist with requested properties
+  become: true
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    password: "{{ item.password | default(omit) }}"
+    groups: "{{ item.groups | default([]) | join(',') }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+  loop: "{{ users_k8s }}"
+
+- name: Pre-create remote tmp for managed users (after user creation)
+  become: true
+  ansible.builtin.file:
+    path: "/tmp/.ansible-{{ item.name }}"
+    state: directory
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0700"
+  loop: "{{ users_k8s }}"

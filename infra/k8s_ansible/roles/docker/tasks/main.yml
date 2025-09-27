@@ -1,0 +1,116 @@
+---
+# Docker APT repo with ASCII keyring (as per official docs)
+# Fixes: NO_PUBKEY 7EA0A9C3F273FCD8 on jammy
+
+# 0) Map architecture to deb arch
+- name: Compute Debian architecture for Docker repo
+  ansible.builtin.set_fact:
+    docker_arch: >-
+      {{
+
+        {
+          'x86_64': 'amd64',
+          'aarch64': 'arm64',
+          'armv7l': 'armhf',
+          'armv6l': 'armhf'
+        }[ansible_architecture] | default('amd64')
+      }}
+# 1) Prereqs
+- name: Ensure /etc/apt/keyrings exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+- name: Install APT prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: true
+  become: true
+# 2) CLEANUP legacy (old gpg keyring or rogue source lines)
+- name: Remove legacy Docker keyring (.gpg) if present
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/docker.gpg
+    state: absent
+  become: true
+- name: Remove legacy docker.list (we’ll recreate it)
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/docker.list
+    state: absent
+  become: true
+- name: Comment any leftover docker repo lines in /etc/apt/sources.list
+  ansible.builtin.replace:
+    path: /etc/apt/sources.list
+    regexp: "^(.*download\\.docker\\.com.*)$"
+    replace: "# \\1"
+  become: true
+# 3) Install ASCII keyring exactly as in Docker docs
+- name: Download Docker ASCII GPG key -> /etc/apt/keyrings/docker.asc
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+  become: true
+# 4) Add repo with signed-by pointing to .asc (not .gpg)
+- name: Add Docker APT repository (signed-by docker.asc)
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ docker_arch }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu
+      {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+    update_cache: false
+  become: true
+# 5) Update cache with bounded retries (now that key+repo are correct)
+- name: Update APT cache (with retries)
+  ansible.builtin.apt:
+    update_cache: true
+  register: apt_update_result
+  until: apt_update_result is succeeded
+  retries: 5
+  delay: 5
+  become: true
+# Choix des paquets : CLI-only par défaut, démon seulement si demandé
+- name: Compute Docker package list (CLI-only by default)
+  ansible.builtin.set_fact:
+    docker_packages_effective: >-
+      {{ (['docker-ce-cli','docker-compose-plugin','docker-buildx-plugin']
+
+          + ( ['docker-ce','containerd.io'] if (docker_manage_daemon|default(false))
+      else [])) }}
+- name: Install Docker packages (effective)
+  ansible.builtin.apt:
+    name: "{{ docker_packages_effective }}"
+    state: present
+  become: true
+# Démarrer le démon UNIQUEMENT si on le gère explicitement
+- name: Ensure Docker service is started when managed
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+    masked: false
+  when: docker_manage_daemon | default(false)
+  become: true
+# Si non géré : s'assurer qu'il est arrêté (tolère unit masquée)
+- name: Ensure Docker service is stopped when unmanaged
+  ansible.builtin.systemd:
+    name: docker
+    state: stopped
+  when: not (docker_manage_daemon | default(false))
+  failed_when: false
+  become: true
+# 7) Ensure daemon is enabled
+- name: Ensure Docker service is running (only when managed)
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+    masked: false
+  when: docker_manage_daemon | default(false)
+  become: true

@@ -1,0 +1,8 @@
+---
+- name: Install and setup HashiCorp Vault
+  hosts: all
+  become: true
+  roles:
+    - vault
+  tags:
+    - "03A"

@@ -1,0 +1,236 @@
+---
+# ----------------------------
+# Init master (corrigé)
+# ----------------------------
+- name: Check if cluster already initialized
+  ansible.builtin.stat:
+    path: "{{ containerd_kubeconfig_admin_path | default('/etc/kubernetes/admin.conf') }}"
+  register: kubeadm_config
+  become: true
+- name: Default apiserver_endpoint if undefined
+  ansible.builtin.set_fact:
+    apiserver_endpoint: "{{ ansible_default_ipv4.address }}:6443"
+  when: apiserver_endpoint is not defined or (apiserver_endpoint | trim) == ''
+# Prépare le dossier kubeconfig, mais seulement si on va copier quelque chose
+- name: Ensure /root/.kube exists
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    mode: "0700"
+  become: true
+  when:
+    - inventory_hostname == groups['k8s_masters'][0]
+    - kubeadm_config.stat.exists or (kubeadm_config.stat.exists is defined and
+      not kubeadm_config.stat.exists) # on le crée tôt si init à faire
+# Dérive les variables attendues par le template, sans regex
+- name: Derive k8s_semver and k8s_release (no regex)
+  ansible.builtin.set_fact:
+    k8s_semver:  "{{ k8s_version.split('-')[0] }}"
+    k8s_release: "v{{ k8s_version.split('-')[0] }}"
+  when: k8s_version is defined and (k8s_version | length) > 0
+
+- name: Render kubeadm config
+  ansible.builtin.template:
+    src: kubeadm-config.j2
+    dest: /root/kubeadm-config.yaml
+    mode: "0644"
+  when: inventory_hostname == groups['k8s_masters'][0]
+  become: true
+- name: Initialize control-plane (skip kube-proxy)
+  ansible.builtin.command: >
+    kubeadm init --config=/root/kubeadm-config.yaml --skip-phases=addon/kube-proxy
+
+  args:
+    creates: "{{ containerd_kubeconfig_admin_path | default('/etc/kubernetes/admin.conf') }}"
+  when:
+    - inventory_hostname == groups['k8s_masters'][0]
+    - not kubeadm_config.stat.exists
+  become: true
+# --- ICI : juste après "Render kubeadm config" ---
+- name: Stat kube-apiserver manifest
+  ansible.builtin.stat:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: apiserver_manifest
+  become: true
+  when: inventory_hostname == groups['k8s_masters'][0]
+
+# Si admin.conf existe MAIS que le manifest n'existe pas → rejoue les phases control-plane
+- name: Recover control-plane phases if manifest missing
+  ansible.builtin.command: kubeadm init phase control-plane all --config=/root/kubeadm-config.yaml
+  when:
+    - inventory_hostname == groups['k8s_masters'][0]
+    - kubeadm_config.stat.exists            # /etc/kubernetes/admin.conf présent
+    - not apiserver_manifest.stat.exists    # mais pas de manifest => cluster incomplet
+  become: true
+- name: Wait apiserver /readyz after etcd loopback patch
+  ansible.builtin.shell: |
+    set -euo pipefail
+    H="{{ apiserver_host_global | default(ansible_default_ipv4.address) }}"
+    for i in $(seq 1 60); do
+      if curl -sf --cacert /etc/kubernetes/pki/ca.crt \
+         --cert   /etc/kubernetes/pki/apiserver-kubelet-client.crt \
+         --key    /etc/kubernetes/pki/apiserver-kubelet-client.key \
+         "https://${H}:6443/readyz" >/dev/null 2>&1; then exit 0; fi
+      sleep 2
+    done
+    exit 1
+  args: { executable: /bin/bash }
+  changed_when: false
+  become: true
+  when: inventory_hostname == groups['k8s_masters'][0]
+# --- FIN INSERT ---
+#  COPIE **après** init OU uniquement si admin.conf existe déjà
+- name: Copy admin kubeconfig to root (only if present)
+  ansible.builtin.copy:
+    src: "{{ containerd_kubeconfig_admin_path | default('/etc/kubernetes/admin.conf') }}"
+    dest: /root/.kube/config
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  when:
+    - inventory_hostname == groups['k8s_masters'][0]
+    - (kubeadm_config.stat.exists) or (not kubeadm_config.stat.exists) # après l’init, le fichier existe grâce à creates
+  changed_when: false # évite de spammer si identique
+# Si admin.conf était manquant mais que le control-plane existait déjà,
+# tu peux régénérer (optionnel; garde-le si tu répares un cluster)
+# - name: Regenerate admin kubeconfig if missing
+#   command: kubeadm init phase kubeconfig admin
+#   args:
+#     creates: "{{ containerd_kubeconfig_admin_path | default('/etc/kubernetes/admin.conf') }}"
+#   when:
+#     - inventory_hostname == groups['k8s_masters'][0]
+#     - not kubeadm_config.stat.exists
+#   become: true
+
+# PATCHS : corrige le bloc pour controller-manager (pas de startupProbe dupliqué)
+
+# --- NEW: lire le manifest de l'apiserver ---
+# --- NEW: lire le manifest de l'apiserver ---
+# --- NEW: lire le manifest de l'apiserver ---
+- name: Read kube-apiserver manifest
+  ansible.builtin.slurp:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: apiman
+  become: true
+  when: inventory_hostname == groups['k8s_masters'][0]
+# --- NEW: dériver l’hôte brut ---
+- name: Derive apiserver probe host (raw)
+  ansible.builtin.set_fact:
+    apiserver_probe_host_raw: >-
+      {{
+
+        (apiman.content | b64decode)
+        | regex_search('--bind-address=([0-9\\.]+)', '\1')
+        | default(((apiman.content | b64decode)
+                   | regex_search('--advertise-address=([0-9\\.]+)', '\1')), true)
+        | default('127.0.0.1', true)
+      }}
+  when: inventory_hostname == groups['k8s_masters'][0]
+# --- NEW: normaliser + préparer la liste d’hôtes à tester ---
+# --- NEW: normaliser l’hôte (retire les crochets éventuels) ---
+- name: Normalize probe host
+  ansible.builtin.set_fact:
+    apiserver_probe_host: "{{ apiserver_probe_host_raw | default('127.0.0.1') | regex_replace('[\\\
+      [\\]]', '') }}"
+  when: inventory_hostname == groups['k8s_masters'][0]
+# --- NEW: construire la liste d’hôtes à tester ---
+- name: Build probe host list
+  ansible.builtin.set_fact:
+    apiserver_probe_hosts: "{{ [apiserver_probe_host, '127.0.0.1'] | unique }}"
+  when: inventory_hostname == groups['k8s_masters'][0]
+# --- NEW: attendre l’écoute TCP 6443 avant de sonder /readyz ---
+- name: Wait for kube-apiserver to listen on :6443 (local socket)
+  ansible.builtin.shell: |
+    for i in $(seq 1 180); do
+      if ss -ltn | awk '{print $4}' | grep -qE '(^|:|])6443$'; then
+        exit 0
+      fi
+      sleep 2
+    done
+    exit 1
+  args: { executable: /bin/bash }
+  register: apiserver_listen
+  changed_when: false
+  become: true
+  when: inventory_hostname == groups['k8s_masters'][0]
+# --- NEW: Wait /readyz robuste (essaie IP dérivée puis 127.0.0.1) ---
+- name: Wait for API server /readyz to return ok (robust)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    for i in $(seq 1 60); do
+      for h in {{ apiserver_probe_hosts | map('regex_replace','[\\[\\]]','') | join(' ') }}; do
+        if curl -sf \
+          --cacert /etc/kubernetes/pki/ca.crt \
+          --cert   /etc/kubernetes/pki/apiserver-kubelet-client.crt \
+          --key    /etc/kubernetes/pki/apiserver-kubelet-client.key \
+          "https://${h}:6443/readyz" >/dev/null 2>&1; then
+          echo ok
+          exit 0
+        fi
+      done
+      sleep 2
+    done
+    exit 1
+  args: { executable: /bin/bash }
+  register: apiready
+  changed_when: false
+  become: true
+  when: inventory_hostname == groups['k8s_masters'][0]
+- name: Patch probes kube-controller-manager to TCP
+  ansible.builtin.replace:
+    path: /etc/kubernetes/manifests/kube-controller-manager.yaml
+    regexp: "(?s)livenessProbe:.*?startupProbe:"
+    replace: |
+      livenessProbe:
+        tcpSocket: { port: 10257 }
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 15
+        failureThreshold: 8
+      startupProbe:
+        tcpSocket: { port: 10257 }
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 15
+        failureThreshold: 24
+    backup: true
+  become: true
+  when:
+    - inventory_hostname == groups['k8s_masters'][0]
+    - kubeadm_config.stat.exists or (containerd_kubeconfig_admin_path is defined) # après init
+- name: Patch probes kube-scheduler to TCP
+  ansible.builtin.replace:
+    path: /etc/kubernetes/manifests/kube-scheduler.yaml
+    regexp: "(?s)livenessProbe:.*?startupProbe:"
+    replace: |
+      livenessProbe:
+        tcpSocket:
+          port: 10259
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 15
+        failureThreshold: 8
+      startupProbe:
+        tcpSocket:
+          port: 10259
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 15
+        failureThreshold: 24
+    backup: true
+  become: true
+  when:
+    - inventory_hostname == groups['k8s_masters'][0]
+    - kubeadm_config.stat.exists
+- name: Debug listen state on failure
+  ansible.builtin.shell: |
+    set -x
+    ss -ltn
+    systemctl --no-pager -l status kubelet || true
+    journalctl -u kubelet -n 80 --no-pager || true
+  args: { executable: /bin/bash }
+  changed_when: false
+  when: apiserver_listen is failed
+  become: true

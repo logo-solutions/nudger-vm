@@ -1,0 +1,15 @@
+---
+- name: Import prep.yml
+  ansible.builtin.import_tasks: prep.yml
+- name: Import containerd.yml
+  ansible.builtin.import_tasks: containerd.yml
+- name: Import k8s_packages.yml
+  ansible.builtin.import_tasks: k8s_packages.yml
+- name: Import init_master.yml
+  ansible.builtin.import_tasks: init_master.yml
+- name: Import flannel.yml
+  ansible.builtin.import_tasks: flannel.yml
+- name: Import kube_proxy.yml
+  ansible.builtin.import_tasks: kube_proxy.yml
+- name: Import kubeconfig_user.yml
+  ansible.builtin.import_tasks: kubeconfig_user.yml

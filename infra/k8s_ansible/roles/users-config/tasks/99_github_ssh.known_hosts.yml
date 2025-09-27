@@ -1,0 +1,27 @@
+---
+# 1) enleve toutes les entrées existantes (y compris hachées)
+- name: Remove any existing github.com known_hosts (handles hashed)
+  become: true
+  become_user: "{{ item.name }}"
+  ansible.builtin.command: >
+    ssh-keygen -R github.com -f /home/{{ item.name }}/.ssh/known_hosts
+  register: rm_known
+  failed_when: false
+  changed_when: "'not found' not in (rm_known.stderr | default(''))"
+  loop: "{{ users_k8s }}"
+
+# 2) ajoute les clés, une par type, en retirant le hostname
+- name: Add github.com keys (hashed, per type)
+  become: true
+  become_user: "{{ item.0.name }}"
+  ansible.builtin.known_hosts:
+    path: "/home/{{ item.0.name }}/.ssh/known_hosts"
+    name: "github.com"
+    # on enlève la 1ère colonne (hostname) -> on garde "type + clé"
+    key: "{{ lookup('ansible.builtin.pipe',
+            'ssh-keyscan -t ' ~ item.1 ~ ' github.com 2>/dev/null | awk ''{print $2 \" \" $3}''') }}"
+    hash_host: true
+    state: present
+  loop: "{{ users_k8s | product(['rsa','ed25519']) | list }}"
+  loop_control:
+    label: "{{ item.0.name }} <- {{ item.1 }}"

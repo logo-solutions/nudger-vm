@@ -1,0 +1,94 @@
+# -----------------------------
+# Kubectl, Helm, Git and Vagrant aliases/functions with completion
+# -----------------------------
+
+# Basic kubectl wrapper
+function k {
+    kubectl "$@"
+}
+
+# Common kubectl get shortcuts
+function kg {
+    kubectl get "$@"
+}
+
+function kga {
+    kubectl get all --all-namespaces "$@"
+}
+
+function kgp {
+    kubectl get pods "$@"
+}
+
+function kgs {
+    kubectl get services "$@"
+}
+
+function ksgp {
+    kubectl get pods -n kube-system "$@"
+}
+
+function kss {
+    kubectl get services -n kube-system "$@"
+}
+
+# Kubectl describe shortcut
+function kd {
+    kubectl describe "$@"
+}
+
+# Kubectl config shortcuts
+function kcc {
+    kubectl config current-context "$@"
+}
+
+function kuc {
+    kubectl config use-context "$@"
+}
+
+# Kubectx / Kubens
+function kx {
+    kubectx "$@"
+}
+
+function kn {
+    kubens "$@"
+}
+
+# Helm
+function h {
+    helm "$@"
+}
+
+# Vagrant
+function vu {
+    vagrant up "$@"
+}
+
+# Git shortcuts
+alias gl='git log'
+alias gst='git status'
+alias gg='git log --oneline --all --graph --name-status'
+
+# Common ls aliases
+alias ll='ls -laFh --color=auto'
+alias la='ls -A'
+alias l='ls -larth'
+alias s='sudo -s'
+
+# Ensure kubectl completion works for all functions
+if command -v kubectl &>/dev/null; then
+    if [ -f ~/.local/share/bash-completion/completions/kubectl ]; then
+        source ~/.local/share/bash-completion/completions/kubectl
+        complete -F __start_kubectl k
+        complete -F __start_kubectl kg
+        complete -F __start_kubectl kga
+        complete -F __start_kubectl kgp
+        complete -F __start_kubectl kgs
+        complete -F __start_kubectl ksgp
+        complete -F __start_kubectl kss
+        complete -F __start_kubectl kd
+        complete -F __start_kubectl kcc
+        complete -F __start_kubectl kuc
+    fi
+fi

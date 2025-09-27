@@ -1,0 +1,16 @@
+enable_ingress_dnat: true
+
+# NodePorts de l’ingress
+ingress_http_nodeport: 30080
+ingress_https_nodeport: 30443
+
+# Ouvre 80/443 via firewalld si présent
+manage_firewall: true
+
+# Activer aussi les redirects IPv6 (si vous gardez des AAAA publics)
+enable_ipv6_redirects: false
+
+# ⬇️ NOUVELLE VAR : choisir le backend
+# - "iptables" (comportement actuel)
+# - "nft"       (nouveau backend nftables)
+ingress_dnat_backend: iptables

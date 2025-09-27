@@ -1,0 +1,18 @@
+---
+- name: Apply ARC CRDs (server-side apply)
+  hosts: localhost
+  gather_facts: no
+  vars:
+    crds_local_path: "/tmp/actions-runner-controller-crds.yaml"  # Chemin sans espace superflu
+  tasks:
+    - name: Apply the CRDs
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        src: "{{ crds_local_path }}"
+        apply: true
+        server_side_apply: true
+        force: true
+        wait: true
+      become: true
+      delegate_to: localhost

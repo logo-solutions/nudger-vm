@@ -1,0 +1,92 @@
+# 60 | starship prompt (install + init)
+
+- name: Check if starship is already in PATH
+  ansible.builtin.command: command -v starship
+  register: starship_cmd
+  changed_when: false
+  failed_when: false
+
+# Tentative APT (si paquet dispo sur la distro)
+- name: Install starship via APT (best-effort)
+  become: true
+  ansible.builtin.package:
+    name: starship
+    state: present
+  register: starship_apt
+  failed_when: false
+  when: starship_cmd.rc != 0
+
+# Tentative snap (souvent dispo sur 22.04)
+- name: Install starship via snap (classic confinement)
+  become: true
+  community.general.snap:
+    name: starship
+    classic: true
+    state: present
+  register: starship_snap
+  failed_when: false
+  when:
+    - starship_cmd.rc != 0
+    - (starship_apt is not defined) or (not starship_apt.changed and starship_apt.failed | default(false))
+
+# Fallback: script officiel (binaire dans /usr/local/bin)
+- name: Download starship install script
+  become: true
+  ansible.builtin.get_url:
+    url: https://starship.rs/install.sh
+    dest: /tmp/install_starship.sh
+    mode: "0755"
+  when:
+    - starship_cmd.rc != 0
+    - (starship_apt is not defined or starship_apt.failed | default(false)) and
+      (starship_snap is not defined or starship_snap.failed | default(false))
+
+- name: Install starship via official script to /usr/local/bin (non-interactive)
+  become: true
+  ansible.builtin.command: /tmp/install_starship.sh -y -b /usr/local/bin
+  args:
+    creates: /usr/local/bin/starship
+  when:
+    - starship_cmd.rc != 0
+    - (starship_apt is not defined or starship_apt.failed | default(false)) and
+      (starship_snap is not defined or starship_snap.failed | default(false))
+
+# --- Config par user (XDG) ---
+- name: Ensure ~/.config exists per user
+  become: true
+  ansible.builtin.file:
+    path: "/home/{{ item.name }}/.config"
+    state: directory
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0755"
+  loop: "{{ users_k8s }}"
+
+- name: Link starship.toml from repo to XDG location (si présent)
+  become: true
+  ansible.builtin.file:
+    src: "/home/{{ item.name }}/nudger/config-vm/starship.toml"
+    dest: "/home/{{ item.name }}/.config/starship.toml"
+    state: link
+    force: true
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+  loop: "{{ users_k8s }}"
+  when: lookup('ansible.builtin.fileglob', '/home/' ~ item.name ~ '/nudger/config-vm/starship.toml', errors='ignore') | length > 0
+
+- name: Ensure starship is initialized in bash (interactive only)
+  become: true
+  ansible.builtin.blockinfile:
+    path: "/home/{{ item.name }}/.bashrc"
+    marker: "# {mark} ANSIBLE starship"
+    block: |
+      if command -v starship >/dev/null 2>&1; then
+        case "$-" in *i*) ;; *) return ;; esac
+        # Starship lira ~/.config/starship.toml
+        eval "$(starship init bash)"
+      fi
+    create: true
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0644"
+  loop: "{{ users_k8s }}"

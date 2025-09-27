@@ -1,0 +1,8 @@
+---
+vault_addr: "http://127.0.0.1:8200"
+vault_root_token: "<TON_ROOT_TOKEN_ICI>"
+users_k8s:
+  - name: root
+    groups: root
+  - name: dev-loic
+    groups: sudo

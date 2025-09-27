@@ -1,0 +1,200 @@
+---
+- name: Install unzip and curl
+  ansible.builtin.apt:
+    name:
+      - unzip
+      - curl
+    state: present
+    update_cache: true
+- name: Create vault system user
+  ansible.builtin.user:
+    name: "{{ vault_user }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+- name: Download Vault
+  ansible.builtin.get_url:
+    url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version
+      }}_linux_amd64.zip"
+    dest: "/tmp/vault_{{ vault_version }}.zip"
+    mode: "0644"
+- name: Unzip Vault
+  ansible.builtin.unarchive:
+    src: "/tmp/vault_{{ vault_version }}.zip"
+    dest: /usr/local/bin/
+    remote_src: true
+    creates: "{{ vault_bin }}"
+- name: Create Vault directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: "0755"
+  loop:
+    - "{{ vault_data_dir }}"
+    - "{{ vault_config_dir }}"
+- name: Deploy Vault config file
+  ansible.builtin.template:
+    src: vault.hcl.j2
+    dest: "{{ vault_config_dir }}/vault.hcl"
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: "0644"
+- name: Create systemd service for Vault
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/vault.service
+    content: |
+      [Unit]
+      Description=HashiCorp Vault
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      User={{ vault_user }}
+      Group={{ vault_group }}
+      ExecStart={{ vault_bin }} server -config={{ vault_config_dir }}/vault.hcl
+      ExecReload=/bin/kill -HUP $MAINPID
+      Restart=on-failure
+      LimitNOFILE=65536
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0644"
+- name: Reload systemd
+  ansible.builtin.command: systemctl daemon-reload
+- name: Enable and start Vault
+  ansible.builtin.systemd:
+    name: vault
+    state: started
+    enabled: true
+- name: Wait for Vault to be listening
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 8200
+    delay: 2
+    timeout: 30
+# -------------------- Status / Init --------------------
+- name: Check Vault status (JSON)
+  ansible.builtin.command: "{{ vault_bin }} status -format=json"
+  environment:
+    VAULT_ADDR: "{{ vault_addr | default('http://127.0.0.1:8200') }}"
+  register: vault_status
+  changed_when: false
+  failed_when: false
+- name: Parse Vault status
+  ansible.builtin.set_fact:
+    vault_status_json: "{{ (vault_status.stdout | default('{}')) | from_json }}"
+  when: vault_status.stdout is defined and vault_status.stdout != ""
+- name: Initialize Vault only if not initialized
+  ansible.builtin.command: "{{ vault_bin }} operator init -key-shares=1 -key-threshold=1
+    -format=json"
+  environment:
+    VAULT_ADDR: "{{ vault_addr | default('http://127.0.0.1:8200') }}"
+  register: vault_init
+  when: (vault_status_json.initialized | default(false)) | bool == false
+  no_log: true
+- name: Save vault initialization output (remote)
+  ansible.builtin.copy:
+    dest: /etc/vault/.vault_initialized
+    content: "{{ vault_init.stdout }}"
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: "0600"
+  when: vault_init.stdout is defined and vault_init.stdout != ""
+  no_log: true
+# -------------------- Charger secrets (token + unseal) --------------------
+- name: Read vault initialization file if present
+  ansible.builtin.slurp:
+    src: /etc/vault/.vault_initialized
+  register: vault_init_file
+  when: vault_init.stdout is not defined or vault_init.stdout == ""
+  no_log: true
+- name: Set vault credentials facts (root token + unseal key)
+  ansible.builtin.set_fact:
+    vault_root_token: >-
+      {{
+
+        (vault_init.stdout | default('{}') | from_json).root_token
+        if (vault_init.stdout | default('') | length > 0)
+        else (vault_init_file.content | b64decode | from_json).root_token
+      }}
+    vault_unseal_key: >-
+      {{
+
+        ((vault_init.stdout | default('{}') | from_json).unseal_keys_b64 | default([])
+      | first)
+        if (vault_init.stdout | default('') | length > 0)
+        else ((vault_init_file.content | b64decode | from_json).unseal_keys_b64 |
+      default([]) | first)
+      }}
+  when: (vault_init.stdout is defined and vault_init.stdout != "") or
+    (vault_init_file is defined and vault_init_file.content is defined)
+  no_log: true
+- name: Fail if we cannot unseal (no key found and Vault is sealed)
+  ansible.builtin.fail:
+    msg: >-
+      Vault est initialisé ET scellé, mais aucune unseal key n'est disponible. Fournis
+      une unseal key via group_vars (chiffrée) ou récupère-la depuis l'init.
+  when: (vault_status_json.sealed | default(true)) and (vault_unseal_key |
+    default('') | length == 0)
+# -------------------- Unseal si nécessaire --------------------
+- name: Unseal Vault if sealed
+  ansible.builtin.command: "{{ vault_bin }} operator unseal {{ vault_unseal_key }}"
+  environment:
+    VAULT_ADDR: "{{ vault_addr | default('http://127.0.0.1:8200') }}"
+  register: unseal_result
+  when: (vault_status_json.sealed | default(true)) and (vault_unseal_key |
+    default('') | length > 0)
+  changed_when: >-
+    'unseal progress' in (unseal_result.stdout | lower | default('')) or 'unsealed'
+    in (unseal_result.stdout | lower | default(''))
+  failed_when: false
+  no_log: true
+- name: Check Vault status after unseal
+  ansible.builtin.command: "{{ vault_bin }} status -format=json"
+  environment:
+    VAULT_ADDR: "{{ vault_addr | default('http://127.0.0.1:8200') }}"
+  register: vault_status_after_unseal
+  changed_when: false
+  failed_when: false
+- name: Parse status after unseal
+  ansible.builtin.set_fact:
+    vault_status_json: "{{ (vault_status_after_unseal.stdout | default('{}')) | from_json
+      }}"
+- name: Fail if still sealed
+  ansible.builtin.fail:
+    msg: "Vault est toujours sealed : vérifie la clé et le seuil (key-threshold)."
+  when: vault_status_json.sealed | default(true)
+# -------------------- Artefacts locaux (contrôleur) --------------------
+- name: Ensure local artifacts dir exists
+  delegate_to: localhost
+  become: false
+  ansible.builtin.file:
+    path: "{{ lookup('env', 'HOME') }}/.ansible/artifacts/{{ inventory_hostname }}"
+    state: directory
+    mode: "0700"
+- name: Fetch init json to controller
+  become: true
+  ansible.builtin.fetch:
+    src: /etc/vault/.vault_initialized
+    dest: "{{ lookup('env', 'HOME') }}/.ansible/artifacts/{{ inventory_hostname }}/vault-init.json"
+    flat: true
+  when: (vault_init.stdout is defined and vault_init.stdout != "") or
+    (vault_init_file is defined and vault_init_file.content is defined)
+  no_log: true
+# -------------------- Enable KV v2 --------------------
+- name: Enable KV v2 on path 'secret'
+  ansible.builtin.command: "{{ vault_bin }} secrets enable -path=secret kv-v2"
+  environment:
+    VAULT_ADDR: "{{ vault_addr | default('http://127.0.0.1:8200') }}"
+    VAULT_TOKEN: "{{ vault_root_token }}"
+  register: kv_enable
+  changed_when: "'success' in (kv_enable.stdout | lower | default(''))"
+  failed_when: >-
+    kv_enable.rc != 0 and ('path is already in use' not in (kv_enable.stderr | default('')))
+    and ('path is already in use' not in (kv_enable.stdout | default('')))
+- name: Create flag file so the task is idempotent (optional)
+  ansible.builtin.file:
+    path: /tmp/kv2_enabled.flag
+    state: touch

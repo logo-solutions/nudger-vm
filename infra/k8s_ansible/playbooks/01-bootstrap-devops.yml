@@ -1,0 +1,17 @@
+---
+- name: Bootstrap DevOps on all hosts
+  hosts: all
+  become: true
+  vars:
+    # Let Ansible auto-detect /usr/bin/python3 on target; no fragile venv here.
+    ansible_python_interpreter: auto_silent
+  pre_tasks:
+    - name: Pre-create Ansible remote tmp for root (avoid warning)
+      ansible.builtin.raw: |
+        mkdir -p /tmp/.ansible-root && \
+        chmod 0700 /tmp/.ansible-root && \
+        chown root:root /tmp/.ansible-root
+  roles:
+    - devops
+  tags:
+    - "01"

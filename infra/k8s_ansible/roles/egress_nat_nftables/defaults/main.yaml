@@ -1,0 +1,11 @@
+---
+# CIDR des pods et des services
+egress_nat_pod_cidr: "10.244.0.0/24"
+egress_nat_svc_cidr: "10.96.0.0/12"
+
+# Si true, on crée la chaîne nat/POSTROUTING si absente
+egress_nat_create_nat_table: true
+
+# Emplacement du script et du service
+egress_nat_script_path: /usr/local/sbin/nft-egress-nat.sh
+egress_nat_unit_name: egress-nat.service

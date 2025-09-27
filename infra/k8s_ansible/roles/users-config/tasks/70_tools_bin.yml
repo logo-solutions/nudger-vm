@@ -1,0 +1,32 @@
+---
+- name: Ensure per-user ~/bin exists
+  become: true
+  ansible.builtin.file:
+    path: "/home/{{ item.name }}/bin"
+    state: directory
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0755"
+  loop: "{{ users_k8s }}"
+
+- name: Stat tool binaries on remote hosts (per user/tool pair)
+  ansible.builtin.stat:
+    path: "{{ item.1.src }}"
+  register: tools_stat
+  loop: "{{ users_k8s | product(tools_symlinks | default([])) | list }}"
+  loop_control:
+    label: "{{ item.0.name }} <- {{ item.1.name }}"
+
+- name: Symlink tools into per-user ~/bin (only if src exists on remote)
+  become: true
+  ansible.builtin.file:
+    src: "{{ item.item.1.src }}"
+    dest: "/home/{{ item.item.0.name }}/bin/{{ item.item.1.name }}"
+    state: link
+    force: true
+    owner: "{{ item.item.0.name }}"
+    group: "{{ item.item.0.name }}"
+  loop: "{{ tools_stat.results | default([]) }}"
+  when: item.stat.exists
+  loop_control:
+    label: "{{ item.item.0.name }} <- {{ item.item.1.name }}"

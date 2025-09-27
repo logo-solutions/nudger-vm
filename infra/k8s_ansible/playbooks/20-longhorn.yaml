@@ -1,0 +1,9 @@
+---
+- name: Bootstrap Flux (secret + GitRepository + Kustomizations)
+  hosts: k8s_masters
+  become: true
+  roles:
+    - role: flux_bootstrap
+    - role: ingress_dnat
+  tags:
+    - "20"

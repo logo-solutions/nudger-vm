@@ -1,0 +1,50 @@
+---
+# ⚠️ Fix de chemin: ./clusters/{{ env }} (et pas ./gitops/clusters/…)
+- name: Ensure per-env Kustomizations exist
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_effective | default(kubeconfig) }}"
+    state: present
+    definition:
+      apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      metadata:
+        name: "{{ item }}-root"
+        namespace: "{{ flux_namespace }}"
+      spec:
+        interval: "{{ kustomize_interval }}"
+        sourceRef: { kind: GitRepository, name: gitops }
+        path: "./clusters/{{ item }}"
+        prune: true
+        timeout: "5m"
+        wait: false
+  loop: "{{ gitops_envs }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Reconcile kustomizations
+  ansible.builtin.command: >
+    {{ flux_bin }} -n {{ flux_namespace }} reconcile
+    kustomization {{ item }}-root --timeout=5m
+  environment:
+    KUBECONFIG: "{{ kubeconfig_effective | default(kubeconfig) }}"
+  register: _reco_all
+  loop: "{{ gitops_envs }}"
+  changed_when: false
+  failed_when: false
+
+- name: Fail if any reconcile failed
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+    fail_msg: "reconcile {{ item.item }}-root a échoué: {{ item.stderr }}"
+  loop: "{{ _reco_all.results }}"
+
+- name: Mark changed if any applied revision
+  ansible.builtin.set_fact:
+    _flux_changed: true
+  when: "_reco_all.results | map(attribute='stderr') | join(' ') is search('applied revision')"
+
+- name: Flux a appliqué une révision
+  ansible.builtin.debug:
+    msg: "Flux a appliqué une révision"
+  when: _flux_changed | default(false)

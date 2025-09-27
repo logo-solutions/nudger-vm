@@ -1,0 +1,32 @@
+---
+# Variables attendues : app, env
+- name: Write ingress.yaml
+  ansible.builtin.copy:
+    dest: "{{ gitops_target_dir }}/apps/{{ app }}/overlays/{{ env }}/ingress.yaml"
+    mode: "0644"
+    content: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: {{ app }}
+        annotations:
+          kubernetes.io/ingress.class: "{{ ingress_class }}"
+      spec:
+        rules:
+          - host: "{{ app }}.{{ env }}.{{ domain_base }}"
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: {{ app }}
+                      port:
+                        number: 80
+- name: Ensure overlay includes ingress.yaml
+  ansible.builtin.blockinfile:
+    path: "{{ gitops_target_dir }}/apps/{{ app }}/overlays/{{ env }}/kustomization.yaml"
+    insertafter: EOF
+    block: |
+      resources:
+        - ingress.yaml

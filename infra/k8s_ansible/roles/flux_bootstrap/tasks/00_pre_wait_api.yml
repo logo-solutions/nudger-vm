@@ -1,0 +1,69 @@
+---
+# Choisir une URL d'API joignable et fabriquer un kubeconfig effectif
+
+- name: Read cluster server from kubeconfig
+  ansible.builtin.shell: >
+    kubectl config view --kubeconfig="{{ kubeconfig }}" --minify
+    -o jsonpath='{.clusters[0].cluster.server}'
+  register: _server_url
+  environment: { KUBECONFIG: "{{ kubeconfig }}" }
+  args: { executable: /bin/bash }
+  changed_when: false
+
+- name: Build API candidates (localhost first)
+  ansible.builtin.set_fact:
+    _api_candidates: >-
+      {{ ['https://127.0.0.1:6443', _server_url.stdout | default('')] | reject('equalto','') | unique }}
+
+- name: Find a reachable apiserver (fast TCP + kubectl confirm)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    candidates=({{ _api_candidates | map('quote') | join(' ') }})
+    for s in "${candidates[@]}"; do
+      host="${s#https://}"; host="${host%%:*}"
+
+      # 1) test TCP ultra rapide (1s)
+      if timeout 1 bash -c "exec 3<>/dev/tcp/${host}/6443" 2>/dev/null; then
+        # 2) confirme via kubectl (TLS géré par le kubeconfig)
+        if kubectl --kubeconfig="{{ kubeconfig }}" --server="${s}" \
+             --request-timeout=3s --insecure-skip-tls-verify=true \
+             get --raw='/readyz' >/dev/null 2>&1; then
+          echo "$s"
+          exit 0
+        fi
+      fi
+    done
+    exit 1
+  args: { executable: /bin/bash }
+  register: _ready_url
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Debug candidates / found server
+  ansible.builtin.debug:
+    msg: "candidates={{ _api_candidates }} ; chosen={{ _ready_url.stdout | default('') | trim }}"
+
+- name: Set fallback URL to localhost if none found
+  ansible.builtin.set_fact:
+    _fallback_url: "https://127.0.0.1:6443"
+  when: (_ready_url.stdout | default('') | trim) | length == 0
+
+- name: Decide effective server URL
+  ansible.builtin.set_fact:
+    _effective_url: "{{ (_ready_url.stdout | default('') | trim) if ((_ready_url.stdout | default('') | trim) | length > 0) else _fallback_url }}"
+
+- name: Build effective kubeconfig (using chosen URL)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cp "{{ kubeconfig }}" /tmp/admin-effective.conf
+    sed -i -E "s#server: https?://[^:]+:6443#server: {{ _effective_url }}#g" /tmp/admin-effective.conf
+    echo /tmp/admin-effective.conf
+  args: { executable: /bin/bash }
+  register: _kc_eff
+  changed_when: false
+  become: true
+
+- name: Set kubeconfig_effective
+  ansible.builtin.set_fact:
+    kubeconfig_effective: "{{ _kc_eff.stdout | trim }}"

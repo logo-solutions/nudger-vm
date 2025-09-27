@@ -1,0 +1,129 @@
+---
+- name: Bootstrap GitOps (FluxCD) - 1 repo, multi-env
+  hosts: masters
+  become: true
+
+  pre_tasks:
+    - name: Ensure base deps
+      apt:
+        name: [ca-certificates, curl, gnupg, git, apt-transport-https]
+        update_cache: true
+        state: present
+
+    - name: Add kubectl apt repo
+      shell: |
+        set -euo pipefail
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+          | gpg --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" \
+          > /etc/apt/sources.list.d/kubernetes.list
+      args: {creates: /etc/apt/sources.list.d/kubernetes.list}
+
+    - name: Install kubectl == {{ kubectl_version }}
+      apt:
+        name: "kubectl={{ kubectl_version }}-00"
+        state: present
+        update_cache: true
+
+    - name: Hold kubectl
+      community.general.dpkg_selections:
+        name: kubectl
+        selection: hold
+
+  tasks:
+    - name: Install flux CLI {{ flux_version }}
+      get_url:
+        url: "https://github.com/fluxcd/flux2/releases/download/v{{ flux_version }}/flux_{{ flux_version }}_linux_amd64.tar.gz"
+        dest: /tmp/flux.tar.gz
+    - name: Unpack flux
+      unarchive: {src: /tmp/flux.tar.gz, dest: /tmp/flux2, remote_src: true}
+    - name: Move flux
+      copy: {src: /tmp/flux2/flux, dest: /usr/local/bin/flux, mode: '0755'}
+
+    - name: Ensure kubeconfig for root
+      file: {path: /root/.kube, state: directory, mode: '0700'}
+    - name: Symlink admin.conf if missing
+      file:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        state: link
+      when: not lookup('ansible.builtin.fileglob', '/root/.kube/config')
+
+    - name: Create flux-system namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata: {name: flux-system}
+
+    - name: Install Flux controllers (CRDs + controllers)
+      command: flux install --namespace=flux-system
+      environment: {KUBECONFIG: /root/.kube/config}
+
+    # --- Auth Git ---
+    - name: PAT -> create flux git secret
+      when: gitops.use_github_pat
+      command: >
+        flux create secret git gitops-credentials
+        --url=https://github.com/{{ gitops.github_owner }}/{{ gitops.github_repo }}.git
+        --username=git
+        --password={{ github.pat }}
+        --namespace=flux-system
+      environment: {KUBECONFIG: /root/.kube/config}
+      no_log: true
+
+    - name: SSH deploy key -> write files
+      when: gitops.use_deploy_key
+      block:
+        - copy: {content: "{{ github.deploy_key_private }}", dest: /root/.ssh/gitops_deploy_key, mode: '0600'}
+        - copy: {content: "{{ github.deploy_key_public }}",  dest: /root/.ssh/gitops_deploy_key.pub, mode: '0644'}
+          no_log: true
+        - name: Create flux ssh secret
+          command: >
+            flux create secret git gitops-credentials
+            --url={{ github.repo_ssh_url }}
+            --ssh-identity=/root/.ssh/gitops_deploy_key
+            --namespace=flux-system
+          environment: {KUBECONFIG: /root/.kube/config}
+
+    # --- Source unique du repo GitOps ---
+    - name: Create GitRepository (unique)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: source.toolkit.fluxcd.io/v1
+          kind: GitRepository
+          metadata: {name: gitops, namespace: flux-system}
+          spec:
+            interval: "{{ git_sync_interval }}"
+            url: "https://github.com/{{ gitops.github_owner }}/{{ gitops.github_repo }}.git"
+            ref: {branch: "{{ gitops.branch }}"}
+            secretRef: {name: gitops-credentials}
+
+    # --- Une Kustomization par environnement ---
+    - name: Create Kustomizations per cluster
+      loop: "{{ clusters }}"
+      loop_control: {loop_var: cluster}
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: kustomize.toolkit.fluxcd.io/v1
+          kind: Kustomization
+          metadata:
+            name: "{{ cluster.name }}-root"
+            namespace: flux-system
+          spec:
+            interval: "{{ kustomize_interval }}"
+            sourceRef: {kind: GitRepository, name: gitops}
+            path: "./clusters/{{ cluster.name }}"
+            prune: true
+            wait: false
+
+  post_tasks:
+    - name: Show status
+      command: flux get kustomizations -A
+      environment: {KUBECONFIG: /root/.kube/config}
+      register: ks
+    - debug: var=ks.stdout

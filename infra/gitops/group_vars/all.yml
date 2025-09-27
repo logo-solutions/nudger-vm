@@ -1,0 +1,31 @@
+---
+# Versions
+kubectl_version: "1.28.15"
+flux_version: "2.3.0"
+
+# Repo GitOps unique
+gitops:
+  github_owner: "TON_USER_OU_ORG"
+  github_repo:  "gitops-live"
+  branch:       "main"
+  # Auth (choisir un mode)
+  use_github_pat: true
+  use_deploy_key: false
+
+# Auth (récup depuis Vault idéalement)
+github:
+  pat: "{{ vault_github_pat | default('') }}"
+  repo_ssh_url: "git@github.com:TON_USER_OU_ORG/gitops-live.git"
+  deploy_key_private: "{{ vault_git_deploy_key_private | default('') }}"
+  deploy_key_public:  "{{ vault_git_deploy_key_public  | default('') }}"
+
+# Clusters (un repo, plusieurs env)
+clusters:
+  - name: "staging"
+  - name: "prod"
+
+# Intervalles (tu veux plus espacé)
+git_sync_interval: "15m"
+kustomize_interval: "30m"
+
+bin_dir: "/usr/local/bin"

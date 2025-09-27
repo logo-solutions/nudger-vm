@@ -1,0 +1,24 @@
+---
+# Docker role defaults (clean)
+
+# APT prerequisites kept minimal
+docker_dependencies:
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+# Per current Docker docs: ASCII keyring, not dearmored .gpg
+docker_keyring_path: "/etc/apt/keyrings/docker.asc"
+# Official repo base
+docker_repo_url: "https://download.docker.com/linux/ubuntu"
+# Install policy on K8s nodes:
+docker_install_cli_only: true # << CLI only (recommended on K8s)
+docker_manage_daemon: false # << don't (re)start docker.service
+# Package sets
+docker_packages_cli:
+  - docker-ce-cli
+  - docker-compose-plugin
+  - docker-buildx-plugin
+docker_packages_daemon:
+  - docker-ce
+  - containerd.io

@@ -1,0 +1,13 @@
+[Unit]
+Description=SNAT for Kubernetes pods (nftables)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Le script est idempotent : on peut l'appeler à chaque boot
+ExecStart={{ egress_nat_script_path }} {{ egress_nat_pod_cidr }} {{ egress_nat_svc_cidr }}
+
+[Install]
+WantedBy=multi-user.target

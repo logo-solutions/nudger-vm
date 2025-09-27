@@ -1,0 +1,10 @@
+---
+- name: Scaffold GitOps repo layout
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  roles:
+    - role: gitops_scaffold
+  tags:
+    - "04"

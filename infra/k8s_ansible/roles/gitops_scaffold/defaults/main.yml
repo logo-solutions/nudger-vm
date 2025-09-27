@@ -1,0 +1,26 @@
+---
+# Racine du dépôt (chemin local où tu lances Ansible)
+repo_root: "{{ lookup('env', 'PWD') }}"
+# Dossier GitOps généré
+gitops_target_dir: "{{ repo_root }}/gitops"
+# Branch & remote (pour info dans README et manifests flux-system)
+git_branch: "main"
+git_url: "" # ex: "https://github.com/OWNER/gitops-live.git" ou "ssh://git@github.com/OWNER/gitops-live.git"
+# Environnements
+gitops_envs:
+  - staging
+  - prod
+# Apps à intégrer (doit correspondre aux dossiers sous k8s-apps/)
+gitops_apps:
+  - nudger-xwiki
+# Dossier source des manifests applicatifs existants
+apps_source_root: "{{ repo_root }}/k8s-apps"
+# Ingress générique (facultatif)
+create_ingress_overlay: true
+ingress_class: "nginx"
+domain_base: "example.com"
+# Intervalles Flux
+sync_interval: "1m"
+kustomize_interval: "1m"
+# Namespace Flux
+flux_namespace: "flux-system"

@@ -1,0 +1,23 @@
+---
+- name: Install Actions Runner Controller CRDs
+  hosts: localhost
+  gather_facts: false
+  become: true
+  roles:
+    - actions_runner_crds
+
+- name: Apply ARC CRDs (server-side apply)
+  hosts: localhost
+  tasks:
+    - name: Apply the CRDs
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"  # Assurez-vous que ce chemin est correct
+        state: present
+        src: "{{ crds_local_path }}"  # Assurez-vous que ce fichier CRD existe
+        apply: "{{ true | bool }}"  # Force booléen
+        server_side_apply: "{{ true | bool }}"  # Force booléen
+        force: true
+        wait: "{{ true | bool }}"  # Force booléen
+      become: true
+      delegate_to: localhost
+      run_once: true²

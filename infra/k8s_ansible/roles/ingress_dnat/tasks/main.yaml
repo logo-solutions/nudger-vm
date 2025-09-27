@@ -1,0 +1,109 @@
+---
+# ========== BACKEND IPTABLES ==========
+- name: Create DNAT unit file (iptables backend)
+  when:
+    - enable_ingress_dnat
+    - ingress_dnat_backend == 'iptables'
+  copy:
+    dest: /etc/systemd/system/ingress-dnat.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Persist iptables DNAT to map 80/443 to NodePorts
+      After=network-online.target kubelet.service
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/sh -c 'iptables  -t nat -C PREROUTING -p tcp --dport 80   -j REDIRECT --to-ports {{ ingress_http_nodeport }}  || iptables  -t nat -A PREROUTING -p tcp --dport 80   -j REDIRECT --to-ports {{ ingress_http_nodeport }}'
+      ExecStart=/bin/sh -c 'iptables  -t nat -C PREROUTING -p tcp --dport 443  -j REDIRECT --to-ports {{ ingress_https_nodeport }} || iptables  -t nat -A PREROUTING -p tcp --dport 443  -j REDIRECT --to-ports {{ ingress_https_nodeport }}'
+      {% if enable_ipv6_redirects %}
+      ExecStart=/bin/sh -c 'ip6tables -t nat -C PREROUTING -p tcp --dport 80   -j REDIRECT --to-ports {{ ingress_http_nodeport }}  || ip6tables -t nat -A PREROUTING -p tcp --dport 80   -j REDIRECT --to-ports {{ ingress_http_nodeport }}'
+      ExecStart=/bin/sh -c 'ip6tables -t nat -C PREROUTING -p tcp --dport 443  -j REDIRECT --to-ports {{ ingress_https_nodeport }} || ip6tables -t nat -A PREROUTING -p tcp --dport 443  -j REDIRECT --to-ports {{ ingress_https_nodeport }}'
+      {% endif %}
+      ExecStop=/bin/sh -c 'iptables  -t nat -D PREROUTING -p tcp --dport 80   -j REDIRECT --to-ports {{ ingress_http_nodeport }}  || true'
+      ExecStop=/bin/sh -c 'iptables  -t nat -D PREROUTING -p tcp --dport 443  -j REDIRECT --to-ports {{ ingress_https_nodeport }} || true'
+      {% if enable_ipv6_redirects %}
+      ExecStop=/bin/sh -c 'ip6tables -t nat -D PREROUTING -p tcp --dport 80   -j REDIRECT --to-ports {{ ingress_http_nodeport }}  || true'
+      ExecStop=/bin/sh -c 'ip6tables -t nat -D PREROUTING -p tcp --dport 443  -j REDIRECT --to-ports {{ ingress_https_nodeport }} || true'
+      {% endif %}
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: systemd-reload
+
+- name: Enable & start DNAT service (iptables)
+  when:
+    - enable_ingress_dnat
+    - ingress_dnat_backend == 'iptables'
+  systemd:
+    name: ingress-dnat.service
+    enabled: true
+    state: started
+
+# ========== BACKEND NFTABLES ==========
+- name: Ensure nftables installed (nft backend)
+  when:
+    - enable_ingress_dnat
+    - ingress_dnat_backend == 'nft'
+  package:
+    name: nftables
+    state: present
+
+- name: Install nft DNAT script
+  when:
+    - enable_ingress_dnat
+    - ingress_dnat_backend == 'nft'
+  copy:
+    src: ingress-dnat-nft.sh
+    dest: /usr/local/sbin/ingress-dnat-nft.sh
+    mode: '0755'
+
+- name: Install nft DNAT unit
+  when:
+    - enable_ingress_dnat
+    - ingress_dnat_backend == 'nft'
+  template:
+    src: ingress-dnat-nft.service.j2
+    dest: /etc/systemd/system/ingress-dnat.service
+  notify: systemd-reload
+
+- name: Enable & start DNAT service (nft)
+  when:
+    - enable_ingress_dnat
+    - ingress_dnat_backend == 'nft'
+  systemd:
+    name: ingress-dnat.service
+    enabled: true
+    state: started
+
+# ========== FIREWALLD OPTIONNEL ==========
+- name: Open 80/443 in firewalld (if present)
+  when:
+    - enable_ingress_dnat
+    - manage_firewall | bool
+  block:
+    - name: Check firewalld
+      command: which firewall-cmd
+      register: fw
+      changed_when: false
+      failed_when: false
+
+    - name: Allow 80/443
+      when: fw.rc == 0
+      ansible.posix.firewalld:
+        port: "{{ item }}/tcp"
+        permanent: true
+        immediate: true
+        state: enabled
+      loop: [80, 443]
+
+# ========== DÉSACTIVATION ==========
+- name: Disable DNAT service if not wanted
+  when: not enable_ingress_dnat
+  systemd:
+    name: ingress-dnat.service
+    enabled: false
+    state: stopped
+  ignore_errors: true

@@ -1,0 +1,13 @@
+---
+- name: Sync applications via Flux
+  hosts: k8s_masters
+  become: true
+  vars:
+    kubeconfig_path: /root/.kube/config
+  module_defaults:
+    kubernetes.core.k8s: { kubeconfig: "{{ kubeconfig_path }}" }
+    kubernetes.core.k8s_info: { kubeconfig: "{{ kubeconfig_path }}" }
+  roles:
+    - role: apps_sync
+  tags:
+    - "06"

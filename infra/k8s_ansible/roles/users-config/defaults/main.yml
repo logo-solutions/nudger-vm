@@ -1,0 +1,37 @@
+---
+# roles/users-config/defaults/main.yml
+# Variables par défaut pour le rôle users-config (AUCUNE tâche ici).
+
+# Liste d’utilisateurs à gérer. Laisse vide par défaut.
+# Exemple (à mettre ailleurs: group_vars/host_vars/playbook vars) :
+# users_k8s:
+#   - name: kubernetes-admin
+#     groups: [sudo]
+#     ssh_public_keys:
+#       - "ssh-ed25519 AAAA... user@example"
+#     kubeconfig: /etc/kubernetes/admin.conf
+#   - name: dev-loic
+#     groups: [sudo]
+#     ssh_public_key: "ssh-ed25519 AAAA... user@example"
+#     kubeconfig: /etc/kubernetes/admin.conf
+users_k8s: []
+tools_symlinks: []
+# Activer le déploiement d’alias bash communs
+bash_aliases_enable: true
+bash_aliases_file: ".bash_aliases"
+bashrc_file: ".bashrc"
+# Complétion kubectl
+kubectl_completion_enable: true
+# kubectx / kubens (installation système depuis GitHub)
+install_kubectx: true
+install_kubens: true
+kubectx_checkout_dir: "/opt/kubectx"
+# Lien d’outils dans ~/bin (rempli si tu veux créer des symlinks)
+# Exemple :
+# tools_symlinks:
+#   - { name: "lazygit", src: "/opt/lazygit/lazygit" }
+#   - { name: "fzf",     src: "/opt/fzf/bin/fzf" }
+
+# Fallback kubeconfig si non précisé par utilisateur (utilisé par les tâches)
+kubeconfig_default_src: "/etc/kubernetes/admin.conf"
+git_auth_mode: "ssh"

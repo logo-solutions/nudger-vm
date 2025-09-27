@@ -1,0 +1,33 @@
+---
+# Exemple d’inventaire de Kustomizations (à mettre dans group_vars/ ou vars:)
+# apps_kustomizations:
+#   - name: ingress-nginx
+#     path: ./clusters/lab/ingress-nginx.kustomization.yaml
+#     wait: true
+#     interval: 1m
+#   - name: apps
+#     path: ./clusters/lab/apps.kustomization.yaml
+#     wait: true
+#     interval: 1m
+#     dependsOn: [ingress-nginx]
+- name: Ensure application Kustomizations exist
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      metadata:
+        name: "{{ item.name }}"
+        namespace: "{{ flux_namespace | default('flux-system') }}"
+      spec:
+        interval: "{{ item.interval | default('1m') }}"
+        sourceRef: { kind: GitRepository, name: gitops }
+        path: "{{ item.path }}"
+        prune: true
+        wait: "{{ item.wait | default(true) }}"
+        timeout: "{{ item.timeout | default('5m') }}"
+        dependsOn: >-
+          {{ (item.dependsOn | default([])) | map('community.general.dict_kv', 'name')
+          | list }}
+  loop: "{{ apps_kustomizations }}"
+  loop_control: { label: "{{ item.name }}" }

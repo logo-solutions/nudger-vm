@@ -1,0 +1,28 @@
+---
+- name: Set repo URL based on auth mode
+  ansible.builtin.set_fact:
+    _git_url: "{{ (git_auth_mode == 'ssh') | ternary(git_ssh_url, git_https_url) }}"
+- name: Ensure GitRepository exists
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_effective | default(kubeconfig) }}"
+    state: present
+    definition:
+      apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      metadata:
+        name: gitops
+        namespace: "{{ flux_namespace }}"
+      spec:
+        interval: "{{ git_sync_interval }}"
+        url: "{{ _git_url }}"
+        ref: { branch: "{{ github_branch }}" }
+        secretRef: { name: "{{ git_secret_name }}" }
+- name: Reconcile GitRepository (fetch revision)
+  ansible.builtin.command: "{{ flux_bin }} -n {{ flux_namespace }} reconcile source
+    git gitops --timeout=2m"
+  environment: { KUBECONFIG: "{{ kubeconfig_effective | default(kubeconfig) }}" }
+  register: _reco_src
+  changed_when: "'fetched revision' in (_reco_src.stdout | default(''))"
+  failed_when: "_reco_src.rc != 0"
+- ansible.builtin.debug:
+    msg: "{{ reco_src.stdout | default('no output') }}"

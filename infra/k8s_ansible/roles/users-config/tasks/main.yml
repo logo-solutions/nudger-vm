@@ -1,0 +1,56 @@
+---
+# Orchestrateur lisible + tags par blocs
+
+- name: 00 | hygiene
+  ansible.builtin.include_tasks: 00_hygiene.yml
+  tags: [always, hygiene]
+
+- name: 10 | users
+  ansible.builtin.include_tasks: 10_users.yml
+  tags: [users]
+
+- name: 20 | sudo
+  ansible.builtin.include_tasks: 20_sudo.yml
+  tags: [sudo]
+
+- name: 30 | ssh authorized_keys
+  ansible.builtin.include_tasks: 30_ssh_authorized_keys.yml
+  tags: [ssh, keys]
+
+- name: 40 | kubeconfig
+  ansible.builtin.include_tasks: 40_kube.yml
+  tags: [kube]
+
+- name: 50 | shell aliases & guard
+  ansible.builtin.include_tasks: 50_shell_aliases.yml
+  tags: [shell]
+
+- name: 60 | kubectl completion
+  ansible.builtin.include_tasks: 60_kubectl_completion.yml
+  tags: [kubectl, completion]
+
+- name: 70 | tools in ~/bin
+  ansible.builtin.include_tasks: 70_tools_bin.yml
+  tags: [tools]
+
+- name: 80 | git clone/update
+  ansible.builtin.include_tasks: 80_git_clone.yml
+  tags: [git, clone]
+
+- name: 85 | git post-clone config/fetch
+  ansible.builtin.include_tasks: 85_git_postclone.yml
+  tags: [git, fetch]
+
+- name: 90 | git identity
+  ansible.builtin.include_tasks: 90_git_identity.yml
+  tags: [git, identity]
+
+- name: 95 | profile autoload
+  ansible.builtin.include_tasks: 95_profile_autoload.yml
+  tags: [profile, shell]
+
+- name: 99 | github ssh bootstrap
+  ansible.builtin.include_tasks: 99_github_ssh.yml
+  tags: [github, ssh]
+- import_tasks: 60_starship.yml
+  tags: [starship, shell]

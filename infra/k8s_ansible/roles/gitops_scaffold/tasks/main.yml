@@ -1,0 +1,141 @@
+---
+- name: Ensure base directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ gitops_target_dir }}"
+    - "{{ gitops_target_dir }}/flux-system"
+    - "{{ gitops_target_dir }}/clusters"
+    - "{{ gitops_target_dir }}/apps"
+- name: Ensure env roots
+  ansible.builtin.file:
+    path: "{{ gitops_target_dir }}/clusters/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ gitops_envs }}"
+# === Apps scaffolding (dirs) ===
+- name: Ensure app base dirs
+  ansible.builtin.file:
+    path: "{{ gitops_target_dir }}/apps/{{ item }}/base"
+    state: directory
+    mode: "0755"
+  loop: "{{ gitops_apps }}"
+- name: Ensure app overlay dirs per env
+  ansible.builtin.file:
+    path: "{{ gitops_target_dir }}/apps/{{ app }}/overlays/{{ env }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ gitops_envs | product(gitops_apps) | list }}"
+  loop_control:
+    label: "{{ item.1 }}:{{ item.0 }}"
+  vars:
+    env: "{{ item.0 }}"
+    app: "{{ item.1 }}"
+# === Flux manifests (optionnels, côté repo) ===
+- name: Create flux-system/GitRepository manifest (optional)
+  ansible.builtin.copy:
+    dest: "{{ gitops_target_dir }}/flux-system/gitrepository.yaml"
+    mode: "0644"
+    content: |
+      apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      metadata:
+        name: gitops
+        namespace: {{ flux_namespace }}
+      spec:
+        interval: {{ sync_interval }}
+        url: {{ (git_url | length > 0) | ternary(git_url, "https://REPLACE_ME") }}
+        ref:
+          branch: {{ git_branch }}
+- name: Create flux-system/Kustomization per env (optional)
+  ansible.builtin.copy:
+    dest: "{{ gitops_target_dir }}/flux-system/kustomization-{{ item }}.yaml"
+    mode: "0644"
+    content: |
+      apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      metadata:
+        name: {{ item }}-root
+        namespace: {{ flux_namespace }}
+      spec:
+        interval: {{ kustomize_interval }}
+        sourceRef:
+          kind: GitRepository
+          name: gitops
+        path: ./gitops/clusters/{{ item }}
+        prune: true
+        wait: false
+  loop: "{{ gitops_envs }}"
+- name: Create per-env root kustomization.yaml
+  ansible.builtin.copy:
+    dest: "{{ gitops_target_dir }}/clusters/{{ item }}/kustomization.yaml"
+    mode: "0644"
+    content: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+      {% for app in gitops_apps %}
+        - ../../apps/{{ app }}/overlays/{{ item }}
+      {% endfor %}
+  loop: "{{ gitops_envs }}"
+# === App kustomizations ===
+- name: Create app base kustomization referencing existing k8s-apps
+  ansible.builtin.copy:
+    dest: "{{ gitops_target_dir }}/apps/{{ item }}/base/kustomization.yaml"
+    mode: "0644"
+    content: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+        - ../../../../k8s-apps/{{ item }}
+  loop: "{{ gitops_apps }}"
+- name: Create overlay kustomization.yaml per app/env
+  ansible.builtin.copy:
+    dest: "{{ gitops_target_dir }}/apps/{{ app }}/overlays/{{ env }}/kustomization.yaml"
+    mode: "0644"
+    content: |
+      apiVersion: kustomize.config.k8s.io/v1beta1
+      kind: Kustomization
+      resources:
+        - ../../base
+  loop: "{{ gitops_envs | product(gitops_apps) | list }}"
+  loop_control:
+    label: "{{ item.1 }}:{{ item.0 }}"
+  vars:
+    env: "{{ item.0 }}"
+    app: "{{ item.1 }}"
+# === Ingress génériques (option) via include_tasks + loop ===
+- name: Optionally add a generic Ingress per app/env
+  when: create_ingress_overlay
+  ansible.builtin.include_tasks: ingress_overlay.yml
+  loop: "{{ gitops_envs | product(gitops_apps) | list }}"
+  loop_control:
+    label: "{{ item.1 }}:{{ item.0 }}"
+  vars:
+    env: "{{ item.0 }}"
+    app: "{{ item.1 }}"
+- name: Create README
+  ansible.builtin.copy:
+    dest: "{{ gitops_target_dir }}/README.md"
+    mode: "0644"
+    content: |
+      # GitOps (single-repo)
+      - GitRepository -> {{ (git_url | length > 0) | ternary(git_url, "https://REPLACE_ME") }} (branch {{ git_branch }})
+      - Envs: {{ gitops_envs | join(', ') }}
+      - Flux sync: GitRepository={{ sync_interval }}, Kustomization={{ kustomize_interval }}
+      - Apps: {{ gitops_apps | join(', ') }}
+
+      ## Reconcile (exemples)
+      flux reconcile source git gitops -n {{ flux_namespace }}
+      {% for e in gitops_envs -%}
+      flux reconcile kustomization {{ e }}-root -n {{ flux_namespace }}
+      {% endfor -%}
+- name: Summary
+  ansible.builtin.debug:
+    msg:
+      - "Scaffold OK -> {{ gitops_target_dir }}"
+      - "Apps: {{ gitops_apps | join(', ') }}"
+      - "Envs: {{ gitops_envs | join(', ') }}"
+      - "Ingress overlays: {{ create_ingress_overlay }}"

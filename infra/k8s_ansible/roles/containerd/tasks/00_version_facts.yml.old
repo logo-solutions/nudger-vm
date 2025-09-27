@@ -1,0 +1,35 @@
+---
+- name: Derive k8s_version from k8s_release if present (strip leading v)
+  ansible.builtin.set_fact:
+    k8s_version: "{{ k8s_release | regex_replace('^v','') }}"
+  when:
+    - k8s_release is defined
+    - (k8s_release | length) > 0
+    - k8s_version is not defined or (k8s_version | length) == 0
+
+# Semver K8s sans suffixe packager (ex: 1.31.12)
+- name: Derive k8s_semver (strip APT suffix like -1.1)
+  ansible.builtin.set_fact:
+    k8s_semver: "{{ k8s_version | regex_replace('-[0-9.]+$','') }}"
+  when: k8s_version is defined and (k8s_version | length) > 0
+
+# k8s_release = "v" + semver (ex: v1.31.12) si absent
+- name: Ensure k8s_release from k8s_semver if missing
+  ansible.builtin.set_fact:
+    k8s_release: "v{{ k8s_semver }}"
+  when:
+    - k8s_semver is defined
+    - k8s_release is not defined or (k8s_release | length) == 0
+
+# Minor pour repo pkgs.k8s.io (ex: 1.31)
+- name: Derive k8s_minor from k8s_semver
+  ansible.builtin.set_fact:
+    k8s_minor: "{{ (k8s_semver.split('.')[0:2] | join('.')) }}"
+  when: k8s_semver is defined
+
+# URLs repo / clé depuis k8s_minor (pkgs.k8s.io est par minor)
+- name: Build repo/gpg URLs from k8s_minor
+  ansible.builtin.set_fact:
+    k8s_repo: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/"
+    k8s_gpg_key: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/Release.key"
+  when: k8s_minor is defined

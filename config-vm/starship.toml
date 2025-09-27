@@ -1,0 +1,43 @@
+# ~/.config/starship.toml
+
+# Format 2 lignes : chemin │ git  (puis prompt)
+format = """
+$directory$git_branch$git_status$character"""
+
+[directory]
+truncation_length = 4            # ~/d/nudger/i/k/r/containerd
+truncation_symbol = "…/"
+home_symbol = "~"
+style = "bold green"
+format = " [ $path]($style) "
+
+[git_branch]
+format = " │ [  $branch]($style) "
+style = "bold blue"
+symbol = ""
+only_attached = false
+
+[git_status]
+format = "([$all_status$ahead_behind]($style))"
+style = "bold"
+conflicted = "≠"
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕"
+stashed = "≡"
+modified = "±"
+staged = "+"
+renamed = "»"
+deleted = "✖"
+untracked = "…"
+up_to_date = ""
+
+[character]
+success_symbol = "[❯](bold purple) "
+error_symbol = "[✖](bold blue) "
+vicmd_symbol = "$ "
+
+# (Optionnel) Accélère Git sur gros repos
+[git_metrics]
+disabled = true
+

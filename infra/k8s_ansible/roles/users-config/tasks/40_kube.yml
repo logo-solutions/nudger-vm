@@ -1,0 +1,47 @@
+---
+- name: Ensure ~/.kube exists
+  become: true
+  ansible.builtin.file:
+    path: "/home/{{ item.name }}/.kube"
+    state: directory
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0700"
+  loop: "{{ users_k8s }}"
+
+- name: Copy kubeconfig when provided (kubeconfig or kubeconfig_src)
+  become: true
+  ansible.builtin.copy:
+    src: "{{ item.kubeconfig_src | default(item.kubeconfig) }}"
+    dest: "/home/{{ item.name }}/.kube/config"
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0600"
+    remote_src: true
+  loop: "{{ users_k8s }}"
+  when: (item.kubeconfig_src | default(item.kubeconfig | default(''))) | length > 0
+
+- name: Render kubeconfig from template when requested
+  become: true
+  ansible.builtin.template:
+    src: "kubeconfig.j2"
+    dest: "/home/{{ item.name }}/.kube/config"
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0600"
+  loop: "{{ users_k8s }}"
+  vars:
+    user_name: "{{ item.name }}"
+  when: item.kubeconfig_template | default(false)
+
+- name: Ensure KUBECONFIG in .bashrc
+  become: true
+  ansible.builtin.lineinfile:
+    path: "/home/{{ item.name }}/.bashrc"
+    regexp: "^[ \t]*export KUBECONFIG="
+    line: "export KUBECONFIG=$HOME/.kube/config"
+    create: true
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0644"
+  loop: "{{ users_k8s }}"

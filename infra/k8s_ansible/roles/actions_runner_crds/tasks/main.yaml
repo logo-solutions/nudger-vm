@@ -1,0 +1,41 @@
+# infra/k8s_ansible/roles/actions_runner_crds/tasks/main.yaml
+
+# Assure les deps Python pour parler à l'API K8s (sur le nœud qui exécute Ansible)
+- name: Apply ARC CRDs (server-side apply)
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: present
+    src: "{{ crds_local_path }}"
+    apply: true
+    server_side_apply: true
+    force: true
+    wait: true
+  become: true
+  become_user: root
+  become_method: sudo
+  delegate_to: localhost
+  run_once: true
+
+- name: Ensure Python deps for kubernetes.core
+  ansible.builtin.pip:
+    name:
+      - kubernetes>=24.2.0
+      - openshift>=0.13.2   # toléré / utile pour compat héritée
+    executable: pip3
+  delegate_to: localhost
+  run_once: true
+
+- name: Download ARC CRDs manifest
+  ansible.builtin.get_url:
+    url: "{{ crds_url }}"
+    dest: "{{ crds_local_path }}"
+    mode: '0644'
+  delegate_to: localhost
+  run_once: true
+
+- name: Cleanup temp file
+  ansible.builtin.file:
+    path: "{{ crds_local_path }}"
+    state: absent
+  delegate_to: localhost
+  run_once: true

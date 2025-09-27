@@ -1,0 +1,10 @@
+---
+- name: Setup Kubernetes users and dev environment
+  hosts: k8s_masters
+  become: true
+  vars:
+    ansible_python_interpreter: auto_silent
+  roles:
+    - users-config
+  tags:
+    - "03B"

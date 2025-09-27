@@ -1,0 +1,11 @@
+#cloud-config
+users:
+  - name: nudgerk8s
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh-authorized-keys:
+      - ssh-ed25519 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIqKTlRSzPT86KSpW6rBpSqUbRrtCvi48K/L+FzaBjzc loicgourmelon@gmail.com loicgourmelon@gmail.com
+
+package_update: true
+package_upgrade: true
+packages:
+  - git

@@ -1,0 +1,31 @@
+---
+# System prep
+- name: Ensure br_netfilter kernel module is loaded
+  community.general.modprobe:
+    name: br_netfilter
+    state: present
+  become: true
+  tags: [preflight]
+- name: Ensure required sysctl params are set
+  ansible.posix.sysctl:            # <-- pas ansible.builtin.sysctl
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ containerd_sysctl_params | dict2items }}"
+  become: true
+  tags: [preflight]
+- name: Disable swap immediately
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | int > 0
+  become: true
+  changed_when: false
+  tags: [preflight]
+- name: Ensure swap is disabled on boot (comment fstab entries)
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: "^\\s*([^#]\\S+\\s+\\S+\\s+swap\\s+\\S+.*)$"
+    replace: "# \\1"
+  become: true
+  tags: [preflight]

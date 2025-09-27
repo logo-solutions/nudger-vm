@@ -1,0 +1,110 @@
+---
+# Expect the calling play to set: become: true
+# Variables expected (can live in vars/defaults):
+# - ansible_venv
+# - user_home
+# - bin_dir
+# - (optionnel) devops_pip_version
+
+# ========== Base packages & user env ==========
+- name: Ensure python3-venv is installed (with retry)
+  ansible.builtin.apt:
+    name: python3-venv
+    state: present
+    update_cache: true
+  register: devops_apt_result
+  retries: 5
+  delay: 10
+  until: devops_apt_result is succeeded
+  tags: [packages]
+
+- name: Install base system packages
+  ansible.builtin.apt:
+    name:
+      - zsh
+      - git
+      - curl
+      - wget
+      - jq
+      - tree
+      - unzip
+      - bash-completion
+      - make
+      - tar
+      - gzip
+      - gh
+      - file
+      - zoxide
+      - dos2unix
+    state: present
+    update_cache: true
+  tags: [packages]
+
+- name: Ensure user bin directory exists
+  ansible.builtin.file:
+    path: "{{ devops_bin_dir }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ ansible_user_id | default(lookup('env', 'USER')) }}"
+  tags: [user-env]
+
+# ========== Ansible virtualenv ==========
+# Rationale: we enforce idempotence with `creates:` and remove a broken venv if activate is missing.
+- name: Check if the Ansible virtualenv exists
+  ansible.builtin.stat:
+    path: "{{ devops_ansible_venv }}/bin/activate"
+  register: devops_venv_stat
+  tags: [venv]
+
+- name: Remove the venv if incomplete
+  ansible.builtin.file:
+    path: "{{ devops_ansible_venv }}"
+    state: absent
+  when: not devops_venv_stat.stat.exists
+  tags: [venv]
+
+- name: Create the Ansible virtualenv (idempotent via creates)
+  ansible.builtin.command: python3 -m venv "{{ devops_ansible_venv }}"
+  args:
+    creates: "{{ devops_ansible_venv }}/bin/activate"
+  tags: [venv]
+
+- name: Ensure pip present (optionally pinned) in the venv
+  ansible.builtin.pip:
+    name: >-
+      {{ ('pip==' ~ devops_pip_version)
+         if (devops_pip_version | default('') | length) > 0 else 'pip' }}
+    state: present
+    virtualenv: "{{ devops_ansible_venv }}"
+    virtualenv_command: "python3 -m venv"
+  tags: [venv]
+
+- name: Install Python packages in the venv
+  ansible.builtin.pip:
+    name:
+      - "ansible-core>=2.16,<2.18"
+      - ansible-lint
+      - openshift
+      - kubernetes
+      - pyyaml
+      - passlib
+    virtualenv: "{{ devops_ansible_venv }}"
+    virtualenv_command: "python3 -m venv"
+  tags: [venv]
+
+# ========== fzf ==========
+- name: Install fzf under /opt/fzf if missing
+  become: true
+  tags: [devtools]
+  block:
+    - name: Clone fzf repository
+      ansible.builtin.git:
+        repo: https://github.com/junegunn/fzf.git
+        dest: /opt/fzf
+        version: master
+        update: true
+    - name: Build fzf binaries (idempotent)
+      ansible.builtin.command: ./install --bin
+      args:
+        chdir: /opt/fzf
+        creates: /opt/fzf/bin/fzf

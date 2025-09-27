@@ -1,0 +1,6 @@
+---
+- name: Remove ingress DNAT fragment
+  file:
+    path: /etc/nftables.d/ingress-dnat.conf
+    state: absent
+  notify: reload nftables

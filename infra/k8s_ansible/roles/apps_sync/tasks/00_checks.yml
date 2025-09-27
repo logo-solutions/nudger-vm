@@ -1,0 +1,42 @@
+---
+- name: Assert kubeconfig source exists and non-empty
+  ansible.builtin.stat:
+    path: "{{ kubeconfig_path | default('/root/.kube/config') }}"
+  register: kc
+- ansible.builtin.assert:
+    that:
+      - kc.stat.exists
+      - (kc.stat.size | int) > 0
+    fail_msg: "kubeconfig {{ kubeconfig_path }} introuvable/vide."
+- name: Quick API check
+  kubernetes.core.k8s_info:
+    kind: Namespace
+- name: Ensure modern Kubernetes Python client on target
+  become: true
+  ansible.builtin.package:
+    name: python3-pip
+    state: present
+- name: Upgrade kubernetes python client (>=24.2.0) and PyYAML
+  become: true
+  ansible.builtin.pip:
+    name:
+      - "kubernetes>=24.2.0"
+      - "PyYAML>=6.0"
+    state: present
+    executable: pip3
+- name: Ensure flux-system namespace exists
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ flux_namespace | default('flux-system') }}"
+    state: present
+  environment:
+    K8S_AUTH_KUBECONFIG: "{{ kubeconfig_admin_path | default('/etc/kubernetes/admin.conf')
+      }}"
+- name: Check Flux controllers are running (best-effort)
+  ansible.builtin.command: >
+    kubectl -n {{ flux_namespace | default('flux-system') }} get deploy
+  environment: { KUBECONFIG: "{{ kubeconfig_path }}" }
+  register: _flux_deploys
+  changed_when: false
+  failed_when: false

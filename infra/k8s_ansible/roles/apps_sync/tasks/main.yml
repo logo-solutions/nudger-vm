@@ -1,0 +1,9 @@
+---
+- name: Import 00_checks.yml
+  ansible.builtin.import_tasks: 00_checks.yml
+- name: Import 01_kustomizations.yml
+  ansible.builtin.import_tasks: 01_kustomizations.yml
+- name: Import 02_reconcile.yml
+  ansible.builtin.import_tasks: 02_reconcile.yml
+- name: Import 03_status.yml
+  ansible.builtin.import_tasks: 03_status.yml

@@ -1,0 +1,5 @@
+---
+devops_user_home: "{{ ansible_env.HOME }}"
+devops_bin_dir: "{{ devops_user_home }}/bin"
+devops_ansible_venv: "{{ devops_user_home }}/ansible_venv"
+devops_requirements_file: "{{ devops_user_home }}/nudger/infra/k8s_ansible/requirements.yml"

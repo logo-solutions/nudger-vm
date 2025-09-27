@@ -1,0 +1,10 @@
+---
+# Only react if we really manage the daemon.
+- name: Restart docker
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+    enabled: true
+    masked: false
+  when: docker_manage_daemon | default(false)
+  become: true

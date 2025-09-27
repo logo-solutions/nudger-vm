@@ -1,0 +1,31 @@
+---
+- name: Check if flux is already installed
+  ansible.builtin.stat:
+    path: "{{ flux_bin }}"
+  register: flux_bin_stat
+- name: Download flux {{ flux_version }}
+  ansible.builtin.get_url:
+    url: "https://github.com/fluxcd/flux2/releases/download/v{{ flux_version }}/flux_{{
+      flux_version }}_linux_amd64.tar.gz"
+    dest: /tmp/flux.tgz
+    mode: "0644"
+    checksum: "{{ flux_checksum | default(omit) }}" # ex: sha256:xxxx
+  when: not flux_bin_stat.stat.exists
+- name: Unarchive flux to /tmp
+  ansible.builtin.unarchive:
+    src: /tmp/flux.tgz
+    dest: /tmp
+    remote_src: true
+  when: not flux_bin_stat.stat.exists
+- name: Install flux into {{ flux_bin }}
+  ansible.builtin.copy:
+    src: /tmp/flux
+    dest: "{{ flux_bin }}"
+    remote_src: true
+    mode: "0755"
+  when: not flux_bin_stat.stat.exists
+- name: Ensure flux binary is executable
+  ansible.builtin.file:
+    path: "{{ flux_bin }}"
+    state: file
+    mode: "0755"

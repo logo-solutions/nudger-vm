@@ -1,0 +1,21 @@
+---
+- name: Ensure bash-completion dir exists for each user
+  become: true
+  ansible.builtin.file:
+    path: "/home/{{ item.name }}/.local/share/bash-completion/completions"
+    state: directory
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0700"
+  loop: "{{ users_k8s }}"
+  when: kubectl_completion_enable | default(true)
+
+- name: Generate kubectl completion file (idempotent via creates)
+  become: true
+  become_user: "{{ item.name }}"
+  ansible.builtin.shell: >
+    kubectl completion bash > /home/{{ item.name }}/.local/share/bash-completion/completions/kubectl
+  args:
+    creates: "/home/{{ item.name }}/.local/share/bash-completion/completions/kubectl"
+  loop: "{{ users_k8s }}"
+  when: kubectl_completion_enable | default(true)

@@ -1,0 +1,31 @@
+---
+# tasks/main.yml
+
+# 1. Toujours installer les libs Python en premier
+- name: Import 00_prereqs.yml
+  ansible.builtin.import_tasks: 00_prereqs.yml
+- name: Set kubeconfig path (single source of truth)
+  ansible.builtin.set_fact:
+    kubeconfig_path: "/root/.kube/config"
+- name: Module defaults for kubeconfig
+  ansible.builtin.set_fact:
+    _module_defaults:
+      kubernetes.core.k8s: { kubeconfig: "{{ kubeconfig_path }}" }
+      kubernetes.core.k8s_info: { kubeconfig: "{{ kubeconfig_path }}" }
+# 3. Puis continuer le flux normal
+- name: Import 00_pre_wait_api.yml
+  ansible.builtin.import_tasks: 00_pre_wait_api.yml
+- name: Import 01_install_cli.yml
+  ansible.builtin.import_tasks: 01_install_cli.yml
+- name: Import 02_namespace.yml
+  ansible.builtin.import_tasks: 02_namespace.yml
+- name: Import 03_secret.yml
+  ansible.builtin.import_tasks: 03_secret.yml
+- name: Import 04_install_controllers.yml
+  ansible.builtin.import_tasks: 04_install_controllers.yml
+- name: Import 05_git_repository.yml
+  ansible.builtin.import_tasks: 05_git_repository.yml
+- name: Import 06_kustomizations.yml
+  ansible.builtin.import_tasks: 06_kustomizations.yml
+- name: Import 07_status.yml
+  ansible.builtin.import_tasks: 07_status.yml

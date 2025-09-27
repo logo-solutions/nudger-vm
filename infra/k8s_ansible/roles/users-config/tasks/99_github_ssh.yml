@@ -1,0 +1,100 @@
+---
+# 99 | github ssh bootstrap
+
+- name: Ensure ~/.ssh exists with correct perms
+  become: true
+  ansible.builtin.file:
+    path: "/home/{{ item.name }}/.ssh"
+    state: directory
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0700"
+  loop: "{{ users_k8s }}"
+
+- name: Generate ed25519 SSH key for GitHub if missing (no passphrase by default)
+  become: true
+  become_user: "{{ item.name }}"
+  ansible.builtin.command: >
+    ssh-keygen -t ed25519 -C "{{ item.name }}@{{ inventory_hostname }}"
+    -f /home/{{ item.name }}/.ssh/id_vm_ed25519 -N ""
+  args:
+    creates: "/home/{{ item.name }}/.ssh/id_vm_ed25519"
+  loop: "{{ users_k8s }}"
+  tags: [github, ssh]
+
+# ----- known_hosts: purge + ajout hashé -----
+
+- name: Remove any existing github.com known_hosts (handles hashed)
+  become: true
+  become_user: "{{ item.name }}"
+  ansible.builtin.command: >
+    ssh-keygen -R github.com -f /home/{{ item.name }}/.ssh/known_hosts
+  register: rm_known_gh
+  failed_when: false
+  changed_when: "'not found' not in (rm_known_gh.stderr | default(''))"
+  loop: "{{ users_k8s }}"
+
+# ----- known_hosts: purge + ajout hashé, sans le module known_hosts -----
+
+- name: Remove any existing github.com known_hosts (handles hashed)
+  become: true
+  become_user: "{{ item.name }}"
+  ansible.builtin.command: >
+    ssh-keygen -R github.com -f /home/{{ item.name }}/.ssh/known_hosts
+  register: rm_known_gh
+  failed_when: false
+  changed_when: "'not found' not in (rm_known_gh.stderr | default(''))"
+  loop: "{{ users_k8s }}"
+
+- name: Add hashed github.com keys (rsa, ed25519) and dedupe
+  become: true
+  become_user: "{{ item.name }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    KN=/home/{{ item.name }}/.ssh/known_hosts
+    tmp="$(mktemp)"
+    # -H = host haché ; on ajoute les 2 types
+    ssh-keyscan -H -t rsa,ed25519 github.com 2>/dev/null > "$tmp"
+    # si KN existe déjà, on concat et on dé-duplique ; sinon on remplace
+    if [ -f "$KN" ]; then
+      cat "$KN" "$tmp" | awk 'NF' | sort -u > "${KN}.new"
+      mv "${KN}.new" "$KN"
+    else
+      mv "$tmp" "$KN"
+    fi
+    chmod 0644 "$KN"
+  args:
+    executable: /bin/bash
+  loop: "{{ users_k8s }}"
+- name: Create ~/.ssh/config entry for GitHub (force IdentityFile)
+  become: true
+  ansible.builtin.blockinfile:
+    path: "/home/{{ item.name }}/.ssh/config"
+    create: true
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0600"
+    marker: "# {mark} ANSIBLE github.com"
+    block: |
+      Host github.com
+        HostName github.com
+        User git
+        IdentityFile ~/.ssh/id_vm_ed25519
+        IdentitiesOnly yes
+  loop: "{{ users_k8s }}"
+  tags: [github, ssh]
+
+# Optionnel : publier automatiquement la clé publique via gh si déjà authentifié
+- name: Push SSH public key to GitHub account via gh (if authenticated)
+  become: true
+  become_user: "{{ item.name }}"
+  ansible.builtin.shell: |
+    set -e
+    if gh auth status >/dev/null 2>&1; then
+      gh ssh-key add -t "nudger {{ inventory_hostname }}:{{ item.name }}" ~/.ssh/id_vm_ed25519.pub >/dev/null 2>&1 || true
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ users_k8s }}"
+  when: github_auto_add_key | default(false)
+  tags: [github, ssh]

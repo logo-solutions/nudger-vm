@@ -1,0 +1,137 @@
+---
+# 50 | shell aliases & guard
+# Tags: aliases, shell
+
+# 0) Court-circuit si désactivé
+- name: "50 | aliases | short-circuit when disabled"
+  ansible.builtin.debug:
+    msg: "bash_aliases_enable=false → skipping aliases setup"
+  when: not (bash_aliases_enable | default(true))
+  tags: [aliases, shell]
+
+# 1) Stat des candidats côté utilisateur
+- name: "50 | aliases | stat user file (config-vm)"
+  become: true
+  ansible.builtin.stat:
+    path: "/home/{{ item.name }}/nudger/config-vm/.bash_aliases"
+  register: alias_vm_stat
+  loop: "{{ users_k8s }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: bash_aliases_enable | default(true)
+  tags: [aliases, shell]
+
+- name: "50 | aliases | stat user file (config)"
+  become: true
+  ansible.builtin.stat:
+    path: "/home/{{ item.name }}/nudger/config/.bash_aliases"
+  register: alias_cfg_stat
+  loop: "{{ users_k8s }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: bash_aliases_enable | default(true)
+  tags: [aliases, shell]
+
+# 1bis) Construire des maps: user -> exists
+- name: "50 | aliases | build existence maps (config-vm)"
+  ansible.builtin.set_fact:
+    vm_alias_by_user: "{{ vm_alias_by_user | default({}) | combine({ item.item.name: item.stat.exists }) }}"
+  loop: "{{ alias_vm_stat.results | default([]) }}"
+  when: bash_aliases_enable | default(true)
+  tags: [aliases, shell]
+
+- name: "50 | aliases | build existence maps (config)"
+  ansible.builtin.set_fact:
+    cfg_alias_by_user: "{{ cfg_alias_by_user | default({}) | combine({ item.item.name: item.stat.exists }) }}"
+  loop: "{{ alias_cfg_stat.results | default([]) }}"
+  when: bash_aliases_enable | default(true)
+  tags: [aliases, shell]
+
+# 2) Déploiement ~/.bash_aliases (priorité: config-vm > config > rôle)
+- name: "50 | aliases | deploy from user's repo (config-vm)"
+  become: true
+  ansible.builtin.copy:
+    src: "/home/{{ item.name }}/nudger/config-vm/.bash_aliases"
+    dest: "/home/{{ item.name }}/.bash_aliases"
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0644"
+    remote_src: true
+  loop: "{{ users_k8s }}"
+  when:
+    - bash_aliases_enable | default(true)
+    - vm_alias_by_user[item.name] | default(false)
+  loop_control:
+    label: "{{ item.name }} (from config-vm)"
+  tags: [aliases, shell]
+
+- name: "50 | aliases | deploy from user's repo (config)"
+  become: true
+  ansible.builtin.copy:
+    src: "/home/{{ item.name }}/nudger/config/.bash_aliases"
+    dest: "/home/{{ item.name }}/.bash_aliases"
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0644"
+    remote_src: true
+  loop: "{{ users_k8s }}"
+  when:
+    - bash_aliases_enable | default(true)
+    - not (vm_alias_by_user[item.name] | default(false))
+    - cfg_alias_by_user[item.name] | default(false)
+  loop_control:
+    label: "{{ item.name }} (from config)"
+  tags: [aliases, shell]
+
+- name: "50 | aliases | deploy role default"
+  become: true
+  ansible.builtin.copy:
+    src: "bash_aliases"  # fichier par défaut dans roles/users-config/files/bash_aliases
+    dest: "/home/{{ item.name }}/.bash_aliases"
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0644"
+  loop: "{{ users_k8s }}"
+  when:
+    - bash_aliases_enable | default(true)
+    - not (vm_alias_by_user[item.name] | default(false))
+    - not (cfg_alias_by_user[item.name] | default(false))
+  loop_control:
+    label: "{{ item.name }} (from role default)"
+  tags: [aliases, shell]
+
+# 3) Guard interactif au début de .bashrc (évite les warnings en non-interactif)
+- name: "50 | aliases | add interactive-shell guard at top of .bashrc"
+  become: true
+  ansible.builtin.lineinfile:
+    path: "/home/{{ item.name }}/{{ bashrc_file | default('.bashrc') }}"
+    regexp: '^\[\[ \$- == \*i\* \]\] \|\| return$'
+    line: '[[ $- == *i* ]] || return'
+    create: true
+    insertbefore: BOF
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0644"
+  loop: "{{ users_k8s }}"
+  when: bash_aliases_enable | default(true)
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [aliases, shell]
+
+# 4) Sourcing idempotent de ~/.bash_aliases
+- name: "50 | aliases | ensure .bash_aliases is sourced in .bashrc"
+  become: true
+  ansible.builtin.lineinfile:
+    path: "/home/{{ item.name }}/{{ bashrc_file | default('.bashrc') }}"
+    regexp: '^[ \t]*source[ \t]+~/.bash_aliases'
+    line: 'source ~/.bash_aliases'
+    create: true
+    insertafter: EOF
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "0644"
+  loop: "{{ users_k8s }}"
+  when: bash_aliases_enable | default(true)
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [aliases, shell]

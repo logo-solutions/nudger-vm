@@ -1,0 +1,247 @@
+diff --git a/roles/users-config/tasks/main.yml b/roles/users-config/tasks/main.yml
+index 0000000..1111111 100644
+--- a/roles/users-config/tasks/main.yml
++++ b/roles/users-config/tasks/main.yml
+@@ -1,3 +1,4 @@
++---
+ # NOTE: System-level changes use become: true where needed (/opt, /usr/local/bin, etc.)
+
+ # ──────────────────────────────────────────────────────────────────────────────
+@@ -25,6 +26,7 @@
+   loop: "{{ users_k8s | map(attribute='groups') | select('defined') | list | flatten
+     | unique }}"
+   when: (users_k8s | length) > 0
++
+ # Create users with optional password hash and group membership.
+ - name: Ensure users exist with requested properties
+   become: true
+@@ -43,6 +45,7 @@
+     owner: "{{ item.name }}"
+     group: "{{ item.name }}"
+     mode: "0700"
++
+   loop: "{{ users_k8s }}"
+ # ──────────────────────────────────────────────────────────────────────────────
+ # 2) Sudoers (opt-in)
+@@ -67,6 +70,7 @@
+     owner: "{{ item.name }}"
+     group: "{{ item.name }}"
+     mode: "0700"
++
+   loop: "{{ users_k8s }}"
+ # If you pass a list (ssh_public_keys: []), add them all.
+ - name: Add SSH authorized keys (list)
+@@ -110,6 +114,7 @@
+     owner: "{{ item.name }}"
+     group: "{{ item.name }}"
+     mode: "0700"
++
+   loop: "{{ users_k8s }}"
+ # Copy an existing kubeconfig when provided (kubeconfig or kubeconfig_src).
+ - name: Copy kubeconfig when provided (kubeconfig or kubeconfig_src)
+@@ -158,7 +163,23 @@
+   loop: "{{ users_k8s }}"
+ # ──────────────────────────────────────────────────────────────────────────────
+ # 5) Bash aliases (optional quality-of-life)
++
++# [NOUVEAU] Garde en tête de .bashrc pour éviter l’exécution en shell non-interactif
++- name: Add interactive-shell guard at top of .bashrc
++  become: true
++  ansible.builtin.lineinfile:
++    path: "/home/{{ item.name }}/{{ bashrc_file | default('.bashrc') }}"
++    insertbefore: BOF
++    line: '[[ $- == *i* ]] || return'
++    create: true
++    owner: "{{ item.name }}"
++    group: "{{ item.name }}"
++    mode: "0644"
++  loop: "{{ users_k8s }}"
++  tags: [shell]
++
+ - name: Deploy bash aliases file
+   become: true
+   ansible.builtin.copy:
+@@ -183,6 +204,7 @@
+     owner: "{{ item.name }}"
+     group: "{{ item.name }}"
+     mode: "0644"
++
+   loop: "{{ users_k8s }}"
+   when: bash_aliases_enable | default(true)
+ # ──────────────────────────────────────────────────────────────────────────────
+@@ -196,6 +218,7 @@
+     owner: "{{ item.name }}"
+     group: "{{ item.name }}"
+     mode: "0700"
++
+   loop: "{{ users_k8s }}"
+   when: kubectl_completion_enable | default(true)
+ - name: Generate kubectl completion file (idempotent via creates)
+@@ -233,6 +256,7 @@
+     owner: "{{ item.item.0.name }}"
+     group: "{{ item.item.0.name }}"
+   loop: "{{ tools_stat.results | default([]) }}"
++
+   when: item.stat.exists
+   loop_control:
+     label: "{{ item.item.0.name }} <- {{ item.item.1.name }}"
+@@ -248,6 +272,7 @@
+     owner: "{{ item.name }}"
+     group: "{{ item.name }}"
+     mode: "0644"
++
+   loop: "{{ users_k8s }}"
+ # ──────────────────────────────────────────────────────────────────────────────
+ # 8) Git: clone/update user-declared repositories
+@@ -259,14 +284,15 @@
+ # Harden known_hosts to avoid first-connection prompts if host_key_checking is enabled.
+ - name: Add github.com to known_hosts for each user
+   become: true
+-  become_user: "{{ item.name }}"
++  become_user: "{{ item.name }}"
+   ansible.builtin.known_hosts:
+     path: "/home/{{ item.name }}/.ssh/known_hosts"
+     name: "github.com"
+-    key: "github.com {{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t rsa,ed25519
+-      github.com') }}"
++    key: "github.com {{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t rsa,ed25519 github.com 2>/dev/null | sort -u | awk \"{print \\$2 \\\" \\\" \\$3}\" | head -n1') }}"
+     state: present
+   loop: "{{ users_k8s }}"
+   when: (git_known_hosts_enable | default(true))
++
+ # Preflight: ensure the vaulted deploy key file exists in the role files (if using SSH deploy key workflow).
+ - name: "[preflight] Verify vaulted key exists in role files"
+   delegate_to: localhost
+@@ -275,22 +301,20 @@
+   register: vaulted_key_stat
+   run_once: true
+   when:
+-    - git_auth_mode == 'ssh'
++    - (git_auth_mode | default('ssh')) == 'ssh'
+ - name: "[preflight] Fail early if vaulted key missing"
+   delegate_to: localhost
+   become: false
+   ansible.builtin.fail:
+     msg: "roles/users-config/files/id_deploy_nudger missing. Place the vaulted key
+       there or disable SSH workflow."
+-  run_once: true
+   when:
+-    - git_auth_mode == 'ssh'
++    - (git_auth_mode | default('ssh')) == 'ssh'
+     - not vaulted_key_stat.stat.exists
++  run_once: true
+ # Deploy per-user SSH deploy key (vaulted file in role files). Remove if you use PAT instead.
+ - name: Install per-user deploy key for GitHub (from vaulted file)
+   become: true
+   ansible.builtin.copy:
+-    src: "id_deploy_nudger" # from roles/users-config/files/
++    src: "id_deploy_nudger"     # from roles/users-config/files/
+     dest: "/home/{{ item.name }}/.ssh/id_deploy_nudger"
+     owner: "{{ item.name }}"
+     group: "{{ item.name }}"
+@@ -318,7 +342,7 @@
+   vars:
+     repo_dest: "{{ item.1.dest | default('/home/' ~ item.0.name ~ '/' ~ (item.1.dest_rel | default('repo'))) }}"
+   ansible.builtin.git:
+-    repo: "{{ item.1.repo }}"
++    repo: "{{ item.1.repo }}"   # ex: git@github.com:<owner>/<repo>.git
+     dest: "{{ repo_dest }}"
+     version: "{{ item.1.version | default('main') }}"
+     update: true
+@@ -337,15 +361,16 @@
+ # (Sécurité) Variante PAT/HTTPS, au cas où un inventaire switcherait :
+ - name: Clone / update repositories via HTTPS (PAT)  # no key_file
+   become: true
+-  become_user: "{{ item.0.name }}"
++  become_user: "{{ item.0.name }}"
+   ansible.builtin.git:
+     repo: "{{ item.1.repo }}"
+     dest: "{{ item.1.dest }}"
+     version: "{{ item.1.version | default('main') }}"
+     update: true
+     force: false
+-    depth: "{{ 1 if (item.1.shallow | default(true)) else omit }}"
++    depth: "{{ 1 if (item.1.shallow | default(true)) else omit }}"
+     recursive: "{{ item.1.submodules | default(true) }}"
+     track_submodules: "{{ item.1.submodules | default(true) }}"
+     accept_newhostkey: true
+-  loop: "{{ users_k8s | subelements('git_repos', 'skip_missing=True') }}"
++  loop: "{{ users_k8s | subelements('git_repos', skip_missing=True) }}"
+   loop_control:
+     label: "{{ item.0.name }} <- {{ item.1.repo }}"
+   when:
+@@ -366,7 +391,7 @@
+   loop_control: { label: "{{ item.0.name }} <- {{ item.1.repo }}" }
+   when: item.1.repo is search('^git@github.com:')
+ # ──────────────────────────────────────────────────────────────────────────────
+-# 10) Autoload d'un profil custom (ex: ~/nudger/config-vm/profile_logo.sh)
++# 10) Autoload d'un profil custom (ex: ~/nudger/config-vm/profile_logo.sh)
+ - name: Ensure custom profile is sourced in .bashrc (if present)
+   become: true
+   ansible.builtin.blockinfile:
+@@ -386,10 +411,11 @@
+   loop: "{{ users_k8s }}"
+   tags: [profile, shell]
+ # ──────────────────────────────────────────────────────────────────────────────
+-# 10) SSH GitHub: clé, known_hosts, config (évite les étapes manuelles)
++# 11) SSH GitHub: clé, known_hosts, config (évite les étapes manuelles)
+ - name: Ensure ~/.ssh exists with correct perms
+   become: true
+   ansible.builtin.file:
+     path: "/home/{{ item.name }}/.ssh"
+     state: directory
+     owner: "{{ item.name }}"
+@@ -403,7 +429,7 @@
+   become_user: "{{ item.name }}"
+   ansible.builtin.command: >
+     ssh-keygen -t ed25519 -C "{{ item.name }}@{{ inventory_hostname }}"
+-    -f /home/{{ item.name }}/.ssh/id_vm_ed25519 -N ""
++    -f /home/{{ item.name }}/.ssh/id_vm_ed25519 -N ""
+   args:
+     creates: "/home/{{ item.name }}/.ssh/id_vm_ed25519"
+   loop: "{{ users_k8s }}"
+@@ -413,12 +439,14 @@
+   become: true
+   become_user: "{{ item.name }}"
+   ansible.builtin.known_hosts:
+-    path: "/home/{{ item.name }}/.ssh/known_hosts"
++    path: "/home/{{ item.name }}/.ssh/known_hosts"
+     name: "github.com"
+-    key: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzG+...REPLACE_WITH_FULL_KEY..."
++    key: "github.com {{ lookup('ansible.builtin.pipe', 'ssh-keyscan -t rsa,ed25519 github.com 2>/dev/null | sort -u | awk \"{print \\$2 \\\" \\\" \\$3}\" | head -n1') }}"
+     state: present
+   loop: "{{ users_k8s }}"
+   tags: [github, ssh]
+
+ - name: Create ~/.ssh/config entry for GitHub (force IdentityFile)
+   become: true
+   ansible.builtin.blockinfile:
+@@ -440,3 +468,32 @@
+   loop: "{{ users_k8s }}"
+   when: github_auto_add_key | default(false)
+   tags: [github, ssh]
++
++# ──────────────────────────────────────────────────────────────────────────────
++# 12) Post-clone: s'assurer que TOUTES les branches sont fetchées pour chaque repo (SSH)
++- name: Configure remote.origin.fetch to get all branches (git_repos)
++  become: true
++  become_user: "{{ item.0.name }}"
++  ansible.builtin.command: >
++    git -C {{ item.1.dest | default('/home/' ~ item.0.name ~ '/' ~ (item.1.dest_rel | default('repo'))) }}
++    config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
++  changed_when: false
++  loop: "{{ users_k8s | subelements('git_repos', skip_missing=True) }}"
++  loop_control:
++    label: "{{ item.0.name }} -> {{ item.1.repo }}"
++  when: git_auth_mode == 'ssh'
++
++- name: Fetch all branches (prune) for each repo (git_repos)
++  become: true
++  become_user: "{{ item.0.name }}"
++  ansible.builtin.command: >
++    git -C {{ item.1.dest | default('/home/' ~ item.0.name ~ '/' ~ (item.1.dest_rel | default('repo'))) }}
++    fetch --all --prune
++  loop: "{{ users_k8s | subelements('git_repos', skip_missing=True) }}"
++  loop_control:
++    label: "{{ item.0.name }} -> {{ item.1.repo }}"
++  when: git_auth_mode == 'ssh'

@@ -1,0 +1,21 @@
+---
+- name: Configure global git identity per user
+  become: true
+  become_user: "{{ item.0.name }}"
+  ansible.builtin.git_config:
+    name: "{{ item.1.key }}"
+    value: "{{ item.1.value }}"
+    scope: global
+  loop: "{{ users_k8s | subelements('git_identity', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }} -> {{ item.1.key }}={{ item.1.value }}"
+
+- name: Assert SSH mode matches SSH repo URLs
+  ansible.builtin.assert:
+    that:
+      - git_auth_mode == 'ssh'
+    fail_msg: "git_auth_mode != ssh alors que repo=git@github.com:... Utilise git_auth_mode=ssh ou passe les repos en HTTPS."
+  loop: "{{ users_k8s | subelements('git_repos', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }} <- {{ item.1.repo }}"
+  when: item.1.repo is search('^git@github.com:')
