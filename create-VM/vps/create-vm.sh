@@ -44,3 +44,6 @@ echo "✅ SSH up"
 ssh-keygen -R "$VM_IP" >/dev/null 2>&1 || true
 echo "👉 Connexion: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
 echo "depuis la VM > git clone https://$PAT@github.com/logo-solutions/nudger-vm.git"
+echo "depuis la VM > ~/nudger-vm/scripts/install-ansible.sh"
+echo " source ~/ansible_venv/bin/activate"
+o "ansible-playbook -i inventory.ini.j2 playbooks/002-clone-github-with-pat.yml"
