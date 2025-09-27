@@ -1,0 +1,34 @@
+---
+# tasks/main.yml - Rôle pour corriger les permissions de la clé GitHub App
+
+- name: S'assurer que /etc/github-app existe
+  file:
+    path: /etc/github-app
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Vérifier que la clé privée existe
+  stat:
+    path: /etc/github-app/nudger-vm.private-key.pem
+  register: key_stat
+
+- name: Forcer les permissions (600) si la clé existe
+  file:
+    path: /etc/github-app/nudger-vm.private-key.pem
+    owner: root
+    group: root
+    mode: '0600'
+  when: key_stat.stat.exists
+
+- name: Vérifier les 3 premières lignes pour contrôle visuel
+  command: head -3 /etc/github-app/nudger-vm.private-key.pem
+  register: head_key
+  changed_when: false
+  when: key_stat.stat.exists
+
+- name: Afficher les 3 premières lignes
+  debug:
+    msg: "Clé GitHub App (head -3): {{ head_key.stdout_lines }}"
+  when: key_stat.stat.exists

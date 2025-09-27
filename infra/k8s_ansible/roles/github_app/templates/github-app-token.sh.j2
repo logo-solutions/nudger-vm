@@ -1,0 +1,26 @@
+#!/usr/bin/env ruby
+require 'openssl'
+require 'jwt'
+require 'net/http'
+require 'json'
+
+APP_ID = File.read("{{ github_app_dir }}/APP_ID").strip
+INSTALLATION_ID = File.read("{{ github_app_dir }}/INSTALLATION_ID").strip
+PRIVATE_KEY = OpenSSL::PKey::RSA.new(File.read("{{ github_app_dir }}/{{ github_app_name }}.private-key.pem"))
+
+# JWT valide 10 minutes
+payload = {
+  iat: Time.now.to_i,
+  exp: Time.now.to_i + (10 * 60),
+  iss: APP_ID
+}
+jwt = JWT.encode(payload, PRIVATE_KEY, "RS256")
+
+# Créer un token d’installation
+url = URI("https://api.github.com/app/installations/#{INSTALLATION_ID}/access_tokens")
+req = Net::HTTP::Post.new(url)
+req["Authorization"] = "Bearer #{jwt}"
+req["Accept"] = "application/vnd.github+json"
+
+res = Net::HTTP.start(url.hostname, url.port, use_ssl: true) { |http| http.request(req) }
+puts res.body
