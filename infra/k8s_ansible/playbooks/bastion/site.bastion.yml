@@ -1,17 +1,9 @@
 ---
-- name: Bootstrap Bastion end-to-end
-  hosts: bastion
-  become: true
+# Playbook d'orchestration pour le bastion
+# Il enchaîne les sous-playbooks dans l'ordre
 
-  tasks:
-    - name: Include 001-setup-github-deploykey
-      import_playbook: 001-setup-github-deploykey.yml
-
-    - name: Include 002-setup-github-app
-      import_playbook: 002-setup-github-app.yml
-
-    - name: Include 003-setup-github-app
-      import_playbook: 003-setup-github-app.yml
-
-    - name: Include 004-secure-ssh
-      import_playbook: 004-secure-ssh.yml
+- import_playbook: 00-pebootstrap.yml
+- import_playbook: 001-setup-github-deploykey.yml
+- import_playbook: 002-setup-github-app.yml
+- import_playbook: 003-setup-github-app.yml
+- import_playbook: 004-secure-ssh.yml
