@@ -22,22 +22,29 @@
         mode: '0600'
       when: key_stat.stat.exists
 
-    - name: Générer un JWT pour GitHub App
-      community.crypto.openssl_jwt:
-        key: "{{ github_app_private_key_file }}"
-        algorithm: RS256
-        payload:
-          iat: "{{ (ansible_date_time.epoch | int) - 60 }}"
-          exp: "{{ (ansible_date_time.epoch | int) + 600 }}"
-          iss: "{{ github_app_id }}"
+    - name: Générer un JWT avec Ruby (fallback pour Ansible 2.10)
+      command: >
+        ruby -ropenssl -rjson -rtime -rjwt -e '
+        app_id = File.read("{{ github_app_app_id_file }}").strip
+        pem    = File.read("{{ github_app_private_key_file }}")
+        key    = OpenSSL::PKey::RSA.new(pem)
+        payload = {
+          iat: Time.now.to_i - 60,
+          exp: Time.now.to_i + 600,
+          iss: app_id
+        }
+        jwt = JWT.encode(payload, key, "RS256")
+        puts jwt
+        '
       register: github_jwt
+      changed_when: false
 
     - name: Créer un token d’installation GitHub App
       uri:
         url: "https://api.github.com/app/installations/{{ github_app_installation_id }}/access_tokens"
         method: POST
         headers:
-          Authorization: "Bearer {{ github_jwt.jwt }}"
+          Authorization: "Bearer {{ github_jwt.stdout }}"
           Accept: "application/vnd.github+json"
         return_content: true
       register: github_installation_token
@@ -53,4 +60,4 @@
 
     - name: Debug - Afficher expiration du token
       debug:
-        msg: "Token généré, valable jusqu’à {{ github_installation_token.json.expires_at }}"
+        msg: "Token généré, valable jusqu’à {{ github_installation_token.json.expires_at | default('inconnu') }}"
