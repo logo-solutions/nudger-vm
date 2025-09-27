@@ -1,7 +1,6 @@
----
-- name: Installer et tester GitHub App JWT
-  hosts: master1
-  become: true
+- name: Installer GitHub App token helper
+  hosts: k8s_masters
+  become: yes
   tasks:
     - name: Créer dossier config GitHub App
       file:
@@ -9,50 +8,12 @@
         state: directory
         owner: root
         group: root
-        mode: "0700"
+        mode: '0700'
 
-    - name: Copier App ID
-      copy:
-        content: "123456"   # <-- remplace par ton APP_ID réel
-        dest: /etc/github-app/APP_ID
-        owner: root
-        group: root
-        mode: "0600"
-
-    - name: Copier clé privée GitHub App
-      copy:
-        src: secrets/nudger-vm.private-key.pem   # chemin côté *controller*
-        dest: /etc/github-app/nudger-vm.private-key.pem
-        owner: root
-        group: root
-        mode: "0600"
-
-    - name: Installer script JWT Ruby
-      copy:
+    - name: Déployer le script github-app-token.sh
+      template:
+        src: templates/github-app-token.sh.j2
         dest: /usr/local/bin/github-app-token.sh
-        mode: "0755"
-        content: |
-          #!/usr/bin/env ruby
-          require "openssl"
-          require "jwt"
-
-          APP_ID = File.read("/etc/github-app/APP_ID").strip
-          private_pem = File.read("/etc/github-app/nudger-vm.private-key.pem")
-          private_key = OpenSSL::PKey::RSA.new(private_pem)
-
-          payload = {
-            iat: Time.now.to_i - 60,
-            exp: Time.now.to_i + (10 * 60),
-            iss: APP_ID
-          }
-
-          jwt = JWT.encode(payload, private_key, "RS256")
-          puts jwt
-
-    - name: Générer JWT GitHub App
-      command: /usr/local/bin/github-app-token.sh
-      register: jwt_out
-
-    - name: Afficher JWT généré
-      debug:
-        msg: "JWT = {{ jwt_out.stdout }}"
+        owner: root
+        group: root
+        mode: '0755'
