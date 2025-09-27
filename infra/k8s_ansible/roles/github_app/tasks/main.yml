@@ -23,18 +23,18 @@
       when: key_stat.stat.exists
 
     - name: Générer un JWT avec Ruby (fallback pour Ansible 2.10)
-      command: >
+        command: |
         ruby -ropenssl -rjson -rtime -rjwt -e '
-        app_id = File.read("{{ github_app_app_id_file }}").strip
-        pem    = File.read("{{ github_app_private_key_file }}")
-        key    = OpenSSL::PKey::RSA.new(pem)
-        payload = {
-          iat: Time.now.to_i - 60,
-          exp: Time.now.to_i + 600,
-          iss: app_id
-        }
-        jwt = JWT.encode(payload, key, "RS256")
-        puts jwt
+          app_id = File.read("{{ github_app_app_id_file }}").strip
+          pem    = File.read("{{ github_app_private_key_file }}")
+          key    = OpenSSL::PKey::RSA.new(pem)
+          payload = {
+            iat: Time.now.to_i - 60,
+            exp: Time.now.to_i + 600,
+            iss: app_id
+          }
+          jwt = JWT.encode(payload, key, "RS256")
+          puts jwt
         '
       register: github_jwt
       changed_when: false
