@@ -1,68 +1,67 @@
 ---
-- name: Configurer GitHub App pour cloner nudger-vm
+- name: Configurer GitHub App sur master1
   hosts: master1
   become: true
   vars:
-    github_app_id: "123456"            # <-- à remplacer par ton App ID
-    github_installation_id: "654321"   # <-- à remplacer par ton Installation ID
-    github_pem_src: "/root/nudger-vm/infra/k8s_ansible/secrets/nudger-vm.private-key.pem"
-    github_pem_dest: "/root/.ssh/github-app.pem"
+    github_app_dir: "/etc/github-app"
+    github_app_pem: "{{ github_app_dir }}/nudger-vm.private-key.pem"
 
   tasks:
-    - name: Créer dossier .ssh si absent
+    - name: Créer dossier de config GitHub App
       file:
-        path: "/root/.ssh"
+        path: "{{ github_app_dir }}"
         state: directory
         mode: "0700"
-        owner: root
-        group: root
-
-    - name: Copier clé privée GitHub App
-      copy:
-        src: "{{ github_pem_src }}"
-        dest: "{{ github_pem_dest }}"
-        owner: root
-        group: root
-        mode: "0600"
-        remote_src: true
 
     - name: Copier App ID
       copy:
-        content: "{{ github_app_id }}"
-        dest: "/root/.ssh/github-app-id"
-        owner: root
-        group: root
+        dest: "{{ github_app_dir }}/APP_ID"
+        content: "{{ lookup('env', 'GITHUB_APP_ID') }}"
         mode: "0600"
 
     - name: Copier Installation ID
       copy:
-        content: "{{ github_installation_id }}"
-        dest: "/root/.ssh/github-installation-id"
-        owner: root
-        group: root
+        dest: "{{ github_app_dir }}/INSTALLATION_ID"
+        content: "{{ lookup('env', 'GITHUB_INSTALLATION_ID') }}"
+        mode: "0600"
+
+    - name: Copier clé privée GitHub App
+      copy:
+        src: "secrets/nudger-vm.private-key.pem"
+        dest: "{{ github_app_pem }}"
         mode: "0600"
 
     - name: Installer script github-app-token.sh
       copy:
-        dest: "/usr/local/bin/github-app-token.sh"
+        dest: /usr/local/bin/github-app-token.sh
         mode: "0755"
         content: |
-          #!/usr/bin/env bash
-          set -euo pipefail
-          APP_ID=$(cat /root/.ssh/github-app-id)
-          INSTALLATION_ID=$(cat /root/.ssh/github-installation-id)
-          PEM_FILE="/root/.ssh/github-app.pem"
+          #!/usr/bin/env ruby
+          require "openssl"
+          require "jwt"
+          require "net/http"
+          require "json"
 
-          JWT=$(ruby -ropenssl -rbase64 -rjson -e "
-          t = Time.now.to_i
-          payload = { iat: t-60, exp: t+600, iss: APP_ID.to_i }
-          key = OpenSSL::PKey::RSA.new(File.read(PEM_FILE))
-          require 'jwt'
-          puts JWT.encode(payload, key, 'RS256')
-          ")
+          app_id = File.read("{{ github_app_dir }}/APP_ID").strip
+          installation_id = File.read("{{ github_app_dir }}/INSTALLATION_ID").strip
+          private_pem = File.read("{{ github_app_pem }}")
 
-          curl -s -X POST \
-            -H "Authorization: Bearer $JWT" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/app/installations/$INSTALLATION_ID/access_tokens \
-            | jq -r .token
+          private_key = OpenSSL::PKey::EC.new(private_pem)
+
+          payload = {
+            iat: Time.now.to_i,
+            exp: Time.now.to_i + (10 * 60),
+            iss: app_id
+          }
+
+          jwt = JWT.encode(payload, private_key, "ES256")
+
+          url = URI("https://api.github.com/app/installations/#{installation_id}/access_tokens")
+          req = Net::HTTP::Post.new(url)
+          req["Authorization"] = "Bearer #{jwt}"
+          req["Accept"] = "application/vnd.github+json"
+
+          res = Net::HTTP.start(url.hostname, url.port, use_ssl: true) { |http| http.request(req) }
+          data = JSON.parse(res.body)
+
+          puts data["token"]
