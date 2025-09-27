@@ -1,19 +1,5 @@
 - name: Installer GitHub App token helper
   hosts: k8s_masters
   become: yes
-  tasks:
-    - name: Créer dossier config GitHub App
-      file:
-        path: /etc/github-app
-        state: directory
-        owner: root
-        group: root
-        mode: '0700'
-
-    - name: Déployer le script github-app-token.sh
-      template:
-        src: templates/github-app-token.sh.j2
-        dest: /usr/local/bin/github-app-token.sh
-        owner: root
-        group: root
-        mode: '0755'
+  roles:
+    - github_app
