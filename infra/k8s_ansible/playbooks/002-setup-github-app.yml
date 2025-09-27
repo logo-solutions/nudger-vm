@@ -27,8 +27,9 @@
 
     - name: Copier clé privée GitHub App
       copy:
-        src: "secrets/nudger-vm.private-key.pem"
-        dest: "{{ github_app_pem }}"
+        src: "/root/nudger-vm/infra/k8s_ansible/secrets/nudger-vm.private-key.pem"
+        dest: "/root/nudger-vm/infra/k8s_ansible/secrets/nudger-vm.private-key.pem"
+        remote_src: yes
         mode: "0600"
 
     - name: Installer script github-app-token.sh
