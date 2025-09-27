@@ -15,7 +15,7 @@
         group: root
 
     - name: Générer une nouvelle clé SSH si absente
-      openssh_keypair:
+      community.crypto.openssh_keypair:
         path: "{{ ssh_key_path }}"
         type: ed25519
         comment: "github-deploy-key-nudger"
