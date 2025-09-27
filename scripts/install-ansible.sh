@@ -7,6 +7,10 @@ echo "➡️ Installation d'Ansible et préparation de l'environnement..."
 apt-get update -y
 apt-get install -y python3-venv git curl unzip
 apt-get install -y ruby-full
+apt-get install -y ruby-full build-essential
+gem install jwt -v "~> 2.7"
+apt-get install -y jq
+
 
 # 2. Créer un venv dédié à Ansible
 ANSIBLE_VENV="$HOME/ansible_venv"
