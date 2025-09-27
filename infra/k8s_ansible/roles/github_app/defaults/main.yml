@@ -3,7 +3,7 @@ github_app_dir: /etc/github-app
 github_app_name: nudger-vm
 
 # Chemin vers les secrets dans le repo local
-github_app_secrets_dir: "{{ playbook_dir }}/../secrets"
+github_app_secrets_dir: "/etc/github-app"
 
 # Fichiers secrets attendus
 github_app_app_id_file: "{{ github_app_secrets_dir }}/APP_ID"
