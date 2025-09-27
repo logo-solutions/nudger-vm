@@ -1,4 +1,12 @@
 ---
+- name: Déployer le script github-app-token.sh
+  template:
+    src: github-app-token.sh.j2
+    dest: /usr/local/bin/github-app-token.sh
+    owner: root
+    group: root
+    mode: '0755'
+
 - name: Setup GitHub App
   block:
 
@@ -52,18 +60,18 @@
 
     - name: Générer un JWT avec Ruby (fallback pour Ansible 2.10)
       command: >
-        ruby -ropenssl -rjson -rtime -rjwt -e '
-        app_id = File.read("{{ github_app_secrets_dir }}/APP_ID").strip;
-        pem    = File.read("{{ github_app_private_key_file }}");
+        ruby -ropenssl -rjson -rtime -rjwt -e "
+        app_id = File.read('{{ github_app_secrets_dir }}/APP_ID').strip;
+        pem    = File.read('{{ github_app_private_key_file }}');
         key    = OpenSSL::PKey::RSA.new(pem);
         payload = {
           iat: Time.now.to_i - 60,
           exp: Time.now.to_i + 600,
           iss: app_id
         };
-        jwt = JWT.encode(payload, key, "RS256");
+        jwt = JWT.encode(payload, key, 'RS256');
         puts jwt
-        '
+        "
       register: github_jwt
       changed_when: false
 

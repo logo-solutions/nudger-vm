@@ -1,26 +1,34 @@
-#!/usr/bin/env ruby
-require 'openssl'
-require 'jwt'
-require 'net/http'
-require 'json'
+#!/usr/bin/env bash
+set -euo pipefail
 
-APP_ID = File.read("{{ github_app_dir }}/APP_ID").strip
-INSTALLATION_ID = File.read("{{ github_app_dir }}/INSTALLATION_ID").strip
-PRIVATE_KEY = OpenSSL::PKey::RSA.new(File.read("{{ github_app_dir }}/{{ github_app_name }}.private-key.pem"))
+APP_ID_FILE="/etc/github-app/APP_ID"
+INSTALLATION_ID_FILE="/etc/github-app/INSTALLATION_ID"
+KEY_FILE="/etc/github-app/nudger-vm.private-key.pem"
 
-# JWT valide 10 minutes
-payload = {
-  iat: Time.now.to_i,
-  exp: Time.now.to_i + (10 * 60),
-  iss: APP_ID
-}
-jwt = JWT.encode(payload, PRIVATE_KEY, "RS256")
+if [[ ! -f "$APP_ID_FILE" || ! -f "$INSTALLATION_ID_FILE" || ! -f "$KEY_FILE" ]]; then
+  echo "❌ Manque un fichier : APP_ID, INSTALLATION_ID ou clé privée."
+  exit 1
+fi
 
-# Créer un token d’installation
-url = URI("https://api.github.com/app/installations/#{INSTALLATION_ID}/access_tokens")
-req = Net::HTTP::Post.new(url)
-req["Authorization"] = "Bearer #{jwt}"
-req["Accept"] = "application/vnd.github+json"
+APP_ID=$(cat "$APP_ID_FILE" | tr -d '[:space:]')
+INSTALLATION_ID=$(cat "$INSTALLATION_ID_FILE" | tr -d '[:space:]')
 
-res = Net::HTTP.start(url.hostname, url.port, use_ssl: true) { |http| http.request(req) }
-puts res.body
+iat=$(date +%s)
+exp=$((iat + 540)) # 9 min
+header='{"alg":"RS256","typ":"JWT"}'
+payload="{\"iat\":$iat,\"exp\":$exp,\"iss\":$APP_ID}"
+
+b64enc() { openssl base64 -e -A | tr '+/' '-_' | tr -d '='; }
+
+jwt_header=$(echo -n "$header" | b64enc)
+jwt_payload=$(echo -n "$payload" | b64enc)
+unsigned_token="$jwt_header.$jwt_payload"
+signature=$(echo -n "$unsigned_token" | openssl dgst -sha256 -sign "$KEY_FILE" | b64enc)
+jwt="$unsigned_token.$signature"
+
+token_json=$(curl -s -X POST \
+  -H "Authorization: Bearer $jwt" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/app/installations/$INSTALLATION_ID/access_tokens)
+
+echo "$token_json" | jq -r '.token'
