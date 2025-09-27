@@ -33,6 +33,35 @@
         owner: root
         group: root
         mode: "0600"
+    - name: Créer dossier config GitHub App
+      file:
+        path: /etc/github-app
+        state: directory
+        mode: "0700"
+
+    - name: Copier clé privée GitHub App
+      copy:
+        src: secrets/nudger-vm.private-key.pem
+        dest: /etc/github-app/nudger-vm.private-key.pem
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Convertir la clé en PKCS#8 (si besoin)
+      command: >
+        openssl pkcs8 -topk8 -inform PEM -outform PEM
+        -in /etc/github-app/nudger-vm.private-key.pem
+        -out /etc/github-app/nudger-vm.private-key.pem
+        -nocrypt
+      args:
+        creates: /etc/github-app/.converted
+      register: pkcs8_convert
+      changed_when: pkcs8_convert.rc == 0
+
+    - name: Marquer conversion terminée
+      file:
+        path: /etc/github-app/.converted
+        state: touch
 
     - name: Installer script github-app-token.sh
       copy:
