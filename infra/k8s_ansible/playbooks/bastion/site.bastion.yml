@@ -4,9 +4,6 @@
   become: true
 
   tasks:
-    - name: Include 00-pebootstrap
-      import_playbook: 00-pebootstrap.yml
-
     - name: Include 001-setup-github-deploykey
       import_playbook: 001-setup-github-deploykey.yml
 
