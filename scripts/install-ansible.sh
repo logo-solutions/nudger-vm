@@ -21,6 +21,7 @@ pip install 'ansible-core>=2.16,<2.19' hvac requests
 # 4. Installer la collection community.hashi_vault
 ansible-galaxy collection install community.hashi_vault
 ansible-galaxy collection install ansible.posix
+ansible-galaxy collection install community.crypto
 
 # 5. Cloner ton dépôt nudger-vm si absent
 if [ ! -d "$HOME/nudger-vm" ]; then
