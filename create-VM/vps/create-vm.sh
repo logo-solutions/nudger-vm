@@ -43,13 +43,13 @@ done || { echo "❌ Timeout SSH"; exit 1; }
 echo "✅ SSH up"
 ssh-keygen -R "$VM_IP" >/dev/null 2>&1 || true
 export bastion=$VM_IP
+echo "ssh -i ~/.ssh/id_vm_ed25519 root@65.21.4.55 \"mkdir -p /etc/github-app && chmod 700 /etc/github-app\""
+echo "scp -i ~/.ssh/id_vm_ed25519 \
+  ~/Downloads/nudger-vm-003.2025-09-27.private-key.pem \
+  root@$VM_IP:/etc/github-app/nudger-vm.private-key.pem"
 echo "👉 Connexion: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
 echo "depuis la VM > git clone https://PAT@github.com/logo-solutions/nudger-vm.git"
 echo "depuis la VM > ~/nudger-vm/scripts/install-ansible.sh"
 echo " source ~/ansible_venv/bin/activate"
 echo "cd ~/nudger-vm/infra/k8s_ansible"
-echo "ssh -i ~/.ssh/id_vm_ed25519 root@65.21.4.55 \"mkdir -p /etc/github-app && chmod 700 /etc/github-app\""
-echo "scp -i ~/.ssh/id_vm_ed25519 \
-  ~/Downloads/nudger-vm-003.2025-09-27.private-key.pem \
-  root@$VM_IP:/etc/github-app/nudger-vm.private-key.pem"
 echo "ansible-playbook -i inventory.ini playbooks/"
