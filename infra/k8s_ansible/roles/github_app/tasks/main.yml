@@ -1,6 +1,7 @@
 ---
 - name: Setup GitHub App
   block:
+
     - name: S'assurer que /etc/github-app existe
       file:
         path: "{{ github_app_secrets_dir }}"
@@ -8,6 +9,22 @@
         owner: root
         group: root
         mode: '0700'
+
+    - name: Déployer APP_ID
+      copy:
+        dest: "{{ github_app_secrets_dir }}/APP_ID"
+        content: "{{ github_app_id }}"
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Déployer INSTALLATION_ID
+      copy:
+        dest: "{{ github_app_secrets_dir }}/INSTALLATION_ID"
+        content: "{{ github_app_installation_id }}"
+        owner: root
+        group: root
+        mode: '0600'
 
     - name: Vérifier que la clé privée existe
       stat:
@@ -21,38 +38,34 @@
         group: root
         mode: '0600'
       when: key_stat.stat.exists
-    - name: Déployer APP_ID
-      copy:
-        dest: "{{ github_app_secrets_dir }}/APP_ID"
-        content: "{{ github_app_id }}"
-        owner: root
-        group: root
-        mode: '0600'
 
-      - name: Déployer INSTALLATION_ID
-        copy:
-          dest: "{{ github_app_secrets_dir }}/INSTALLATION_ID"
-          content: "{{ github_app_installation_id }}"
-          owner: root
-          group: root
-          mode: '0600'
+    - name: Vérifier les 3 premières lignes pour contrôle visuel
+      command: head -3 "{{ github_app_private_key_file }}"
+      register: head_key
+      changed_when: false
+      when: key_stat.stat.exists
 
-      - name: Générer un JWT avec Ruby (fallback pour Ansible 2.10)
-        command: |
-          ruby -ropenssl -rjson -rtime -rjwt -e '
-            app_id = File.read("{{ github_app_app_id_file }}").strip
-            pem    = File.read("{{ github_app_private_key_file }}")
-            key    = OpenSSL::PKey::RSA.new(pem)
-            payload = {
-              iat: Time.now.to_i - 60,
-              exp: Time.now.to_i + 600,
-              iss: app_id
-            }
-            jwt = JWT.encode(payload, key, "RS256")
-            puts jwt
-          '
-        register: github_jwt
-        changed_when: false
+    - name: Afficher les 3 premières lignes de la clé
+      debug:
+        msg: "Clé GitHub App (head -3): {{ head_key.stdout_lines }}"
+      when: key_stat.stat.exists
+
+    - name: Générer un JWT avec Ruby (fallback pour Ansible 2.10)
+      command: >
+        ruby -ropenssl -rjson -rtime -rjwt -e '
+        app_id = File.read("{{ github_app_secrets_dir }}/APP_ID").strip;
+        pem    = File.read("{{ github_app_private_key_file }}");
+        key    = OpenSSL::PKey::RSA.new(pem);
+        payload = {
+          iat: Time.now.to_i - 60,
+          exp: Time.now.to_i + 600,
+          iss: app_id
+        };
+        jwt = JWT.encode(payload, key, "RS256");
+        puts jwt
+        '
+      register: github_jwt
+      changed_when: false
 
     - name: Créer un token d’installation GitHub App
       uri:
