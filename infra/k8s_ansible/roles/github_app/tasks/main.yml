@@ -1,34 +1,52 @@
 ---
-# tasks/main.yml - Rôle pour corriger les permissions de la clé GitHub App
+- name: Setup GitHub App secrets
+  hosts: k8s_masters
+  become: true
 
-- name: S'assurer que /etc/github-app existe
-  file:
-    path: /etc/github-app
-    state: directory
-    owner: root
-    group: root
-    mode: '0700'
+  vars:
+    github_app_id: "2024451"            # <-- remplace avec ton vrai APP_ID
+    github_installation_id: "87738262"  # <-- remplace avec ton vrai INSTALLATION_ID
+    github_private_key_src: "secrets/nudger-vm.private-key.pem"  # chemin relatif à ton repo
+    github_private_key_dest: "/etc/github-app/nudger-vm.private-key.pem"
 
-- name: Vérifier que la clé privée existe
-  stat:
-    path: /etc/github-app/nudger-vm.private-key.pem
-  register: key_stat
+  tasks:
+    - name: S'assurer que /etc/github-app existe
+      file:
+        path: /etc/github-app
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
 
-- name: Forcer les permissions (600) si la clé existe
-  file:
-    path: /etc/github-app/nudger-vm.private-key.pem
-    owner: root
-    group: root
-    mode: '0600'
-  when: key_stat.stat.exists
+    - name: Déployer l'App ID
+      copy:
+        content: "{{ github_app_id }}"
+        dest: /etc/github-app/APP_ID
+        owner: root
+        group: root
+        mode: '0600'
 
-- name: Vérifier les 3 premières lignes pour contrôle visuel
-  command: head -3 /etc/github-app/nudger-vm.private-key.pem
-  register: head_key
-  changed_when: false
-  when: key_stat.stat.exists
+    - name: Déployer l'Installation ID
+      copy:
+        content: "{{ github_installation_id }}"
+        dest: /etc/github-app/INSTALLATION_ID
+        owner: root
+        group: root
+        mode: '0600'
 
-- name: Afficher les 3 premières lignes
-  debug:
-    msg: "Clé GitHub App (head -3): {{ head_key.stdout_lines }}"
-  when: key_stat.stat.exists
+    - name: Déployer la clé privée GitHub App
+      copy:
+        src: "{{ github_private_key_src }}"
+        dest: "{{ github_private_key_dest }}"
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Vérifier les 3 premières lignes de la clé
+      command: head -3 {{ github_private_key_dest }}
+      register: head_key
+      changed_when: false
+
+    - name: Afficher les 3 premières lignes (debug visuel)
+      debug:
+        msg: "Clé GitHub App: {{ head_key.stdout_lines }}"
