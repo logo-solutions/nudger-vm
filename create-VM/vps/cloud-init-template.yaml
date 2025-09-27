@@ -1,20 +1,20 @@
----
 #cloud-config
-# yamllint disable rule:comments
+package_update: true
+package_upgrade: true
+packages:
+  - python3
+  - python3-venv
+  - git
+  - unzip
+  - curl
 
 users:
+  - default
   - name: ${USER}
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    groups: sudo
-    shell: /bin/bash
     ssh_authorized_keys:
       - ${ID_SSH_PUB}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
 
-packages:
-  - git
-  - curl
-  - vim
-  - openssh-client
 runcmd:
-  # Installe les paquets utiles
-  - apt-get update && apt-get install -y git curl vim openssh-client
+  - echo "✅ Cloud-init terminé"
