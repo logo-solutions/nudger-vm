@@ -47,5 +47,8 @@ echo "👉 Connexion: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
 echo "depuis la VM > git clone https://PAT@github.com/logo-solutions/nudger-vm.git"
 echo "depuis la VM > ~/nudger-vm/scripts/install-ansible.sh"
 echo " source ~/ansible_venv/bin/activate"
-echo "cd infra/k8s_ansible""
-o "ansible-playbook -i inventory.ini.j2 playbooks/002-clone-github-with-pat.yml"
+echo "cd infra/k8s_ansible"
+echo "scp -i ~/.ssh/id_vm_ed25519 \
+  ~/Downloads/nudger-vm-003.2025-09-27.private-key.pem \
+  root@$VM_IP:/root/nudger-vm/infra/k8s_ansible/secrets/nudger-vm.private-key.pem"
+echo "ansible-playbook -i inventory.ini.j2 playbooks/002-setup-github-app.yml"
