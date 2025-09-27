@@ -1,0 +1,90 @@
+---
+- name: Setup GitHub App auth et clonage nudger-vm
+  hosts: master1
+  become: true
+  vars:
+    github_app_dir: "/root/.github-app"
+    github_app_id: "123456"          # <-- À remplacer
+    github_installation_id: "987654" # <-- À remplacer
+    github_pem_src: "/root/nudger-vm-003.pem" # <-- Chemin où tu as uploadé ton .pem
+    repo_url: "https://github.com/logo-solutions/nudger-vm.git"
+    repo_dest: "/root/nudger-vm"
+
+  tasks:
+    - name: Créer dossier GitHub App
+      file:
+        path: "{{ github_app_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Copier App ID
+      copy:
+        dest: "{{ github_app_dir }}/app_id"
+        content: "{{ github_app_id }}"
+        mode: "0600"
+
+    - name: Copier Installation ID
+      copy:
+        dest: "{{ github_app_dir }}/installation_id"
+        content: "{{ github_installation_id }}"
+        mode: "0600"
+
+    - name: Copier clé privée GitHub App
+      copy:
+        src: "{{ github_pem_src }}"
+        dest: "{{ github_app_dir }}/app.pem"
+        mode: "0600"
+
+    - name: Installer script github-app-token.sh
+      copy:
+        dest: /usr/local/bin/github-app-token.sh
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APP_ID=$(cat {{ github_app_dir }}/app_id)
+          INSTALLATION_ID=$(cat {{ github_app_dir }}/installation_id)
+          PEM_FILE={{ github_app_dir }}/app.pem
+
+          NOW=$(date +%s)
+          EXP=$((NOW + 540))
+          HEADER='{"alg":"RS256","typ":"JWT"}'
+          PAYLOAD="{\"iat\":$NOW,\"exp\":$EXP,\"iss\":$APP_ID}"
+
+          BASE64URL() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+          JWT=$(printf '%s' "$HEADER" | BASE64URL)
+          JWT+="."
+          JWT+=$(printf '%s' "$PAYLOAD" | BASE64URL)
+          SIGNATURE=$(printf '%s' "$JWT" | openssl dgst -sha256 -sign "$PEM_FILE" | BASE64URL)
+          JWT+="."
+          JWT+=$SIGNATURE
+
+          curl -s -X POST \
+            -H "Authorization: Bearer $JWT" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/app/installations/$INSTALLATION_ID/access_tokens" \
+            | jq -r .token
+
+    - name: Générer un token test
+      command: github-app-token.sh
+      register: token_test
+      changed_when: false
+
+    - name: Debug token tronqué
+      debug:
+        msg: "Exemple de token: {{ token_test.stdout[:40] }}..."
+
+    - name: Cloner repo nudger-vm avec token GitHub App
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dest }}"
+        version: main
+        update: yes
+        force: yes
+        clone: yes
+        accept_hostkey: yes
+        # Auth via token
+        extra_opts: "--config credential.helper= '!f() { echo password=$TOKEN; }; f'"
+      environment:
+        TOKEN: "{{ token_test.stdout }}"
