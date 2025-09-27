@@ -27,7 +27,7 @@ fi
 OUTPUT="$(hcloud server create \
   --name "$NAME" \
   --image ubuntu-22.04 \
-  --type cpx21 \
+  --type cpx31 \
   --user-data-from-file "$DIRHOME/create-VM/vps/cloud-init.yaml" \
   --ssh-key loic-vm-key)"
 
@@ -42,8 +42,10 @@ done || { echo "❌ Timeout SSH"; exit 1; }
 
 echo "✅ SSH up"
 ssh-keygen -R "$VM_IP" >/dev/null 2>&1 || true
+export bastion=$VM_IP
 echo "👉 Connexion: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
-echo "depuis la VM > git clone https://$PAT@github.com/logo-solutions/nudger-vm.git"
+echo "depuis la VM > git clone https://PAT@github.com/logo-solutions/nudger-vm.git"
 echo "depuis la VM > ~/nudger-vm/scripts/install-ansible.sh"
 echo " source ~/ansible_venv/bin/activate"
+echo "cd infra/k8s_ansible""
 o "ansible-playbook -i inventory.ini.j2 playbooks/002-clone-github-with-pat.yml"
