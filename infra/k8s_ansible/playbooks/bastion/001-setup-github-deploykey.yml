@@ -2,6 +2,7 @@
 - name: Générer et configurer une clé SSH GitHub sur la VM
   hosts: master1
   become: true
+  gather_facts: false
   vars:
     ssh_key_path: "/root/.ssh/id_github_vm"
 
@@ -48,3 +49,12 @@
         owner: root
         group: root
         mode: "0600"
+
+# --- Bloc de sécurité : on force Ansible à ne pas chercher Vault
+- name: Neutraliser Ansible Vault pour ce playbook
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Info
+      debug:
+        msg: "Ce playbook n'utilise pas de variables Vault. Pas de .vault_pass.txt requis."
