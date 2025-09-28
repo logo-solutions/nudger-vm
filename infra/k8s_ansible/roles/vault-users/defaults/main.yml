@@ -1,8 +1,4 @@
 ---
+vault_bin: /usr/local/bin/vault
 vault_addr: "http://127.0.0.1:8200"
-vault_root_token: "<A_REMPLACER>"
-users_k8s:
-  - name: root
-    groups: root
-  - name: dev-loic
-    groups: sudo
+vault_root_token: ""
