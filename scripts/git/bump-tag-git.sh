@@ -1,31 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# git-bump-tag.sh — incrémente automatiquement version sémantique
-# Usage: ./git-bump-tag.sh
-
 remote="${REMOTE:-origin}"
-default_remote_url="git@github.com:logo-solutions/nudger-vm.git"
 
-# Sanity: corrige le remote si nécessaire
-if ! git remote get-url "$remote" >/dev/null 2>&1; then
-  echo "⚠️ Remote '$remote' absent, création avec $default_remote_url"
-  git remote add "$remote" "$default_remote_url"
+# Récupère uniquement les tags semver (ignore v202... etc.)
+last_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1)"
+
+if [[ -z "$last_tag" ]]; then
+  last_tag="v0.0.0"
 fi
 
-# Récupère le dernier tag, ou v0.0.0 s'il n'y en a pas
-last_tag=$(git tag --sort=-v:refname | head -n 1)
-[ -z "$last_tag" ] && last_tag="v0.0.0"
-version=${last_tag#v}
-IFS='.' read -r major minor patch <<< "$version"
+version="${last_tag#v}"
 
-# Récupère le dernier message de commit
-last_commit_msg=$(git log -1 --pretty=%B)
+# Initialisation safe
+major=0; minor=0; patch=0
+if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  major="${BASH_REMATCH[1]}"
+  minor="${BASH_REMATCH[2]}"
+  patch="${BASH_REMATCH[3]}"
+fi
 
-# Détermine quel numéro incrémenter
-if [[ $last_commit_msg =~ BREAKING ]]; then
+# Message du dernier commit
+last_commit_msg="$(git log -1 --pretty=%B)"
+
+# Détermine le bump
+if [[ "$last_commit_msg" =~ BREAKING ]]; then
   major=$((major + 1)); minor=0; patch=0
-elif [[ $last_commit_msg =~ ^feat ]]; then
+elif [[ "$last_commit_msg" =~ ^feat ]]; then
   minor=$((minor + 1)); patch=0
 else
   patch=$((patch + 1))
@@ -33,8 +34,8 @@ fi
 
 new_tag="v${major}.${minor}.${patch}"
 
-# Création et push du tag
+# Création et push
 git tag -a "$new_tag" -m "Release $new_tag"
 git push "$remote" "$new_tag"
 
-echo "✅ Tag $new_tag créé et poussé automatiquement !"
+echo "✅ Nouveau tag semver : $new_tag"
