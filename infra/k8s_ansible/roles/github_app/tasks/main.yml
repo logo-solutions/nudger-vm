@@ -67,12 +67,13 @@
         algorithm: RS256
         private_key: "{{ lookup('file', github_app_private_key_file) }}"
       register: github_jwt
-        - name: Créer un token d’installation GitHub App
-          uri:
+
+    - name: Créer un token d’installation GitHub App
+      uri:
         url: "https://api.github.com/app/installations/{{ github_app_installation_id }}/access_tokens"
         method: POST
         headers:
-          Authorization: "Bearer {{ github_jwt.stdout }}"
+          Authorization: "Bearer {{ github_jwt.token }}"
           Accept: "application/vnd.github+json"
         return_content: true
       register: github_installation_token
