@@ -1,41 +1,5 @@
 ---
-- name: Ensure Vault secret exists for each user
-  ansible.builtin.command: >
-    {{ vault_bin }} kv put secret/users/{{ item.name }}
-    password={{ item.password | default('changeme123') }}
-  environment:
-    VAULT_ADDR: "{{ vault_addr }}"
-    VAULT_TOKEN: "{{ vault_root_token }}"
-  loop: "{{ users_k8s }}"
-  when: vault_root_token is defined
-  register: vault_put
-  changed_when: "'created_time' in (vault_put.stdout | default(''))"
-  failed_when: false
-
-# 2. Lire les mots de passe depuis Vault
-- name: Read passwords from Vault
-  ansible.builtin.set_fact:
-    user_passwords: "{{ user_passwords | default({}) | combine({
-      item.name: lookup(
-        'community.hashi_vault.hashi_vault',
-        'secret=secret/data/users/' + item.name,
-        token=vault_root_token,
-        url=vault_addr,
-        field='password',
-        default='changeme123'
-      )
-    }) }}"
-  loop: "{{ users_k8s }}"
-
-# 3. Créer / mettre à jour les comptes utilisateurs
-- name: Ensure users exist
-  ansible.builtin.user:
-    name: "{{ item.name }}"
-    groups: "{{ (item.groups | default([])) | join(',') }}"
-    shell: /bin/bash
-    create_home: true
-    password: "{{ user_passwords[item.name] | password_hash('sha512') }}"
-  loop: "{{ users_k8s }}"
+# roles/vault-users/tasks/main.yml
 
 - name: Lire les mots de passe depuis Vault
   ansible.builtin.set_fact:
@@ -45,13 +9,18 @@
         'secret=secret/data/users/' ~ item.name,
         token=vault_root_token,
         url=vault_addr,
-        field='password',
-        default='changeme123'
+        field='password',         # 🔑 On force à récupérer uniquement le champ password
+        default='changeme123'     # fallback si le secret n’existe pas
       )
     }) }}"
   loop: "{{ users_k8s }}"
 
-- name: Créer les utilisateurs
+- name: Debug - Vérifier le contenu des mots de passe récupérés
+  debug:
+    var: user_passwords
+  when: user_passwords is defined
+
+- name: Ensure users exist
   ansible.builtin.user:
     name: "{{ item.name }}"
     groups: "{{ (item.groups | default([])) | join(',') }}"
