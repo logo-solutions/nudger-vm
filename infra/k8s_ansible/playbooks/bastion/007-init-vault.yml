@@ -20,28 +20,29 @@
   tasks:
     - debug:
         var: user_passwords
+
 - name: Seed Vault avec les utilisateurs (mots de passe par défaut)
   hosts: bastion
   become: true
   vars:
-    vault_init_file: "/root/.ansible/artifacts/bastion/vault-init.json"
+    vault_init_file: "{{ lookup('env','HOME') }}/.ansible/artifacts/bastion/vault-init.json"
     vault_addr: "http://127.0.0.1:8200"
 
   tasks:
-    - name: Lire le root_token depuis vault-init.json
-      command: "jq -r .root_token {{ vault_init_file }}"
-      register: vault_token
-      changed_when: false
+    - name: Charger vault-init.json et extraire root_token
+      set_fact:
+        vault_init_data: "{{ lookup('file', vault_init_file) | from_json }}"
+        vault_root_token: "{{ (lookup('file', vault_init_file) | from_json).root_token }}"
 
     - name: Debug - afficher le root_token tronqué
       debug:
-        msg: "Root token récupéré: {{ vault_token.stdout | regex_replace('(.{6}).*', '\\1...') }}"
+        msg: "Root token récupéré: {{ vault_root_token | regex_replace('(.{6}).*', '\\1...') }}"
 
     - name: Exporter variables d’env pour Vault (dans facts Ansible)
       set_fact:
         vault_env:
           VAULT_ADDR: "{{ vault_addr }}"
-          VAULT_TOKEN: "{{ vault_token.stdout }}"
+          VAULT_TOKEN: "{{ vault_root_token }}"
 
     - name: Créer les secrets utilisateurs dans Vault
       command: >

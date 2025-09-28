@@ -56,3 +56,11 @@ echo "👉 Depuis la VM :git clone https://\$PAT@github.com/logo-solutions/nudge
 echo "👉 Puis : ~/nudger-vm/scripts/bastion/install-ansible.sh"
 echo "👉 Ensuite : source ~/ansible_venv/bin/activate && cd ~/nudger-vm/infra/k8s_ansible"
 echo " ansible-playbook -i inventory.ini playbooks/bastion/site.bastion.yml"
+echo "export VAULT_ADDR=http://127.0.0.1:8200"
+echo "export VAULT_TOKEN=\$(jq -r .root_token /root/.ansible/artifacts/bastion/vault-init.json)"
+echo "vault kv put secret/users/kubernetes-admin password="changeme123""
+echo "vault kv put secret/users/ops-loic password="changeme123""
+echo "vault kv put secret/users/dev-loic password="changeme123""
+
+
+echo " ansible-playbook -i inventory.ini playbooks/bastion/007-init-vault.yml"
