@@ -58,22 +58,47 @@
         msg: "Clé GitHub App (head -3): {{ head_key.stdout_lines }}"
       when: key_stat.stat.exists
 
-    - name: Générer un JWT avec community.general.jwt_encode
-      community.general.jwt_encode:
-        payload:
-          iat: "{{ (ansible_date_time.epoch | int) - 60 }}"
-          exp: "{{ (ansible_date_time.epoch | int) + 600 }}"
-          iss: "{{ lookup('file', github_app_app_id_file) | trim }}"
-        algorithm: RS256
-        private_key: "{{ lookup('file', github_app_private_key_file) }}"
-      register: github_jwt
+    # ------------------- JWT en 3 parties -------------------
+    - name: Préparer header/base64
+      set_fact:
+        github_jwt_header: "{{ {'alg': 'RS256', 'typ': 'JWT'} | to_json | b64encode(encoding='utf-8') | regex_replace('=+$','') }}"
 
+    - name: Préparer payload/base64
+      set_fact:
+        github_jwt_payload: >-
+          {{
+            {'iat': (ansible_date_time.epoch | int) - 60,
+             'exp': (ansible_date_time.epoch | int) + 600,
+             'iss': lookup('file', github_app_app_id_file) | trim}
+            | to_json
+            | b64encode(encoding='utf-8')
+            | regex_replace('=+$','')
+          }}
+
+    - name: Construire le message à signer
+      set_fact:
+        github_jwt_message: "{{ github_jwt_header }}.{{ github_jwt_payload }}"
+
+    - name: Signer avec la clé RSA
+      community.crypto.openssl_sign:
+        path: "{{ github_app_private_key_file }}"
+        content: "{{ github_jwt_message }}"
+        encoding: der
+        format: pkcs1
+        algorithm: sha256
+      register: github_jwt_sig
+
+    - name: Construire le JWT final
+      set_fact:
+        github_jwt: "{{ github_jwt_message }}.{{ github_jwt_sig.signature | b64encode(encoding='utf-8') | regex_replace('=+$','') }}"
+
+    # ------------------- Token d’installation -------------------
     - name: Créer un token d’installation GitHub App
       uri:
         url: "https://api.github.com/app/installations/{{ github_app_installation_id }}/access_tokens"
         method: POST
         headers:
-          Authorization: "Bearer {{ github_jwt.token }}"
+          Authorization: "Bearer {{ github_jwt }}"
           Accept: "application/vnd.github+json"
         return_content: true
       register: github_installation_token
