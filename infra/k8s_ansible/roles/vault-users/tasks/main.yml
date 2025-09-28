@@ -27,5 +27,5 @@
     groups: "{{ (item.groups | default([])) | join(',') }}"
     shell: /bin/bash
     create_home: true
-    password: "{{ user_passwords[item.name] | password_hash('sha512') }}"
+    password: "{{ (user_passwords[item.name] | string) | password_hash('sha512') }}"
   loop: "{{ users_k8s }}"
