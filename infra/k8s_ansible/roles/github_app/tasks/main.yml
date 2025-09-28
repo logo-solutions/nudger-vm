@@ -58,41 +58,61 @@
         msg: "Clé GitHub App (head -3): {{ head_key.stdout_lines }}"
       when: key_stat.stat.exists
 
-    # ------------------- JWT en 3 parties -------------------
-    - name: Préparer header/base64
-      set_fact:
-        github_jwt_header: "{{ {'alg': 'RS256', 'typ': 'JWT'} | to_json | b64encode(encoding='utf-8') | regex_replace('=+$','') }}"
+    # ---------------------------
+    # Génération du JWT (via OpenSSL CLI)
+    # ---------------------------
 
-    - name: Préparer payload/base64
+    - name: Créer l’entête JWT (base64url)
       set_fact:
-        github_jwt_payload: >-
-          {{
-            {'iat': (ansible_date_time.epoch | int) - 60,
-             'exp': (ansible_date_time.epoch | int) + 600,
-             'iss': lookup('file', github_app_app_id_file) | trim}
-            | to_json
-            | b64encode(encoding='utf-8')
-            | regex_replace('=+$','')
-          }}
+        jwt_header: "{{ {'alg': 'RS256', 'typ': 'JWT'} | to_json | b64encode | regex_replace('=+$','') | regex_replace('\\+', '-') | regex_replace('/', '_') }}"
 
-    - name: Construire le message à signer
+    - name: Créer le payload JWT (base64url)
       set_fact:
-        github_jwt_message: "{{ github_jwt_header }}.{{ github_jwt_payload }}"
+        jwt_payload: >-
+          {{ {'iat': (ansible_date_time.epoch | int) - 60,
+              'exp': (ansible_date_time.epoch | int) + 600,
+              'iss': github_app_id }
+              | to_json
+              | b64encode
+              | regex_replace('=+$','')
+              | regex_replace('\\+', '-')
+              | regex_replace('/', '_') }}
 
-    - name: Signer avec la clé RSA
-      community.crypto.openssl_sign:
-        path: "{{ github_app_private_key_file }}"
-        content: "{{ github_jwt_message }}"
-        encoding: der
-        format: pkcs1
-        algorithm: sha256
-      register: github_jwt_sig
+    - name: Construire le message JWT (header.payload)
+      set_fact:
+        jwt_message: "{{ jwt_header }}.{{ jwt_payload }}"
+
+    - name: Écrire le message JWT temporaire
+      copy:
+        dest: /tmp/jwt.msg
+        content: "{{ jwt_message }}"
+        mode: '0600'
+
+    - name: Signer le message avec OpenSSL
+      command: >
+        openssl dgst -sha256 -sign {{ github_app_private_key_file }} -out /tmp/jwt.sig /tmp/jwt.msg
+
+    - name: Lire la signature
+      slurp:
+        src: /tmp/jwt.sig
+      register: sig_bin
+
+    - name: Encoder signature en base64url
+      set_fact:
+        jwt_signature: "{{ sig_bin.content | b64decode | b64encode | regex_replace('=+$','') | regex_replace('\\+', '-') | regex_replace('/', '_') }}"
 
     - name: Construire le JWT final
       set_fact:
-        github_jwt: "{{ github_jwt_message }}.{{ github_jwt_sig.signature | b64encode(encoding='utf-8') | regex_replace('=+$','') }}"
+        github_jwt: "{{ jwt_message }}.{{ jwt_signature }}"
 
-    # ------------------- Token d’installation -------------------
+    - name: Debug - JWT généré (tronqué)
+      debug:
+        msg: "JWT généré: {{ github_jwt[0:40] }}..."
+
+    # ---------------------------
+    # Utilisation du JWT pour obtenir un token d’installation
+    # ---------------------------
+
     - name: Créer un token d’installation GitHub App
       uri:
         url: "https://api.github.com/app/installations/{{ github_app_installation_id }}/access_tokens"
