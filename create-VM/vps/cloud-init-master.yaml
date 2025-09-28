@@ -1,0 +1,21 @@
+#cloud-config
+users:
+  - name: root
+    ssh-authorized-keys:
+      - ${SSH_PUB_KEY}   # remplacé automatiquement par Hetzner via --ssh-key
+    lock_passwd: true
+
+package_update: true
+package_upgrade: true
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - git
+
+runcmd:
+  - echo "👉 VM master initialisée via cloud-init"
+  - hostnamectl set-hostname master1
+  - timedatectl set-timezone Europe/Paris

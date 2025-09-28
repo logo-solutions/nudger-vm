@@ -1,35 +1,46 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NAME="master1"
-TYPE="cpx21"
-LOCATION="nbg1"
-IMAGE="ubuntu-22.04"
-SSH_KEY="id_vm_ed25519"
-INVENTORY="infra/k8s_ansible/inventory.ini"
+ID_SSH="${ID_SSH:-bastion-vm-key-hetzner}"  # Nom ou ID Hetzner
+NAME="${1:-master1}"
+USER="root"
 
-echo "👉 Création de la VM $NAME..."
-hcloud server create --name "$NAME" \
-  --type "$TYPE" \
-  --location "$LOCATION" \
-  --image "$IMAGE" \
-  --ssh-key "$SSH_KEY" \
-  --label role=k8s,env=lab \
-  --wait
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIRHOME="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-IP=$(hcloud server describe "$NAME" -o json | jq -r '.public_net.ipv4.ip')
-echo "✅ VM $NAME créée avec IP $IP"
+# Prérequis
+for cmd in hcloud envsubst nc ssh ssh-keygen; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "❌ $cmd manquant"; exit 1; }
+done
 
-# Mise à jour inventaire
-echo "👉 Mise à jour de $INVENTORY"
-grep -v "^$NAME " "$INVENTORY" > "$INVENTORY.tmp" || true
-cat >> "$INVENTORY.tmp" <<EOF
+# cloud-init
+envsubst < "$DIRHOME/create-VM/vps/cloud-init-template.yaml" \
+  > "$DIRHOME/create-VM/vps/cloud-init.yaml"
 
-[k8s_masters]
-$NAME ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_vm_ed25519
-EOF
-mv "$INVENTORY.tmp" "$INVENTORY"
+# Supprimer VM existante
+if hcloud server describe "$NAME" >/dev/null 2>&1; then
+  hcloud server delete "$NAME"
+fi
 
-echo "✅ Inventaire mis à jour"
-echo "👉 Test SSH: ssh -i ~/.ssh/id_vm_ed25519 root@$IP"
-echo "👉 Test Ansible: ansible -i $INVENTORY $NAME -m ping"
+# Créer VM
+OUTPUT="$(hcloud server create \
+  --name "$NAME" \
+  --image ubuntu-22.04 \
+  --type cpx21 \
+  --user-data-from-file "$DIRHOME/create-VM/vps/cloud-init.yaml" \
+  --ssh-key "$ID_SSH")"
+
+VM_IP="$(echo "$OUTPUT" | awk '/IPv4:/ {print $2}')"
+echo "✅ VM $NAME IP: $VM_IP"
+
+# Attente SSH
+for i in {1..30}; do
+  if nc -z -w2 "$VM_IP" 22; then break; fi
+  sleep 2
+done || { echo "❌ Timeout SSH"; exit 1; }
+ssh-keygen -R "$VM_IP" >/dev/null 2>&1 || true
+export master1=$VM_IP
+echo "✅ SSH up"
+echo "./scripts/bastion/post-install-host.sh $VM_IP"
+echo "## depuis la VM"
+echo "ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"

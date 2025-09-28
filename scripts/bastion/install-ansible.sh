@@ -8,6 +8,10 @@ sudo apt install -y \
   python3-pip python3-dev build-essential \
   ruby ruby-dev
 
+curl -L https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz -o hcloud.tar.gz
+tar -xvzf hcloud.tar.gz
+mv hcloud /usr/local/bin/
+chmod +x /usr/local/bin/hcloud
 
 # Virtualenv Ansible
 ANSIBLE_VENV="$HOME/ansible_venv"
