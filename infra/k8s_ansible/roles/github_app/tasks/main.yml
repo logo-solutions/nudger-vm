@@ -58,25 +58,17 @@
         msg: "Clé GitHub App (head -3): {{ head_key.stdout_lines }}"
       when: key_stat.stat.exists
 
-    - name: Générer un JWT avec Ruby (fallback pour Ansible 2.10)
-      command: >
-        ruby -ropenssl -rjson -rtime -rjwt -e "
-        app_id = File.read('{{ github_app_secrets_dir }}/APP_ID').strip;
-        pem    = File.read('{{ github_app_private_key_file }}');
-        key    = OpenSSL::PKey::RSA.new(pem);
-        payload = {
-          iat: Time.now.to_i - 60,
-          exp: Time.now.to_i + 600,
-          iss: app_id
-        };
-        jwt = JWT.encode(payload, key, 'RS256');
-        puts jwt
-        "
+    - name: Générer un JWT avec community.crypto (Python)
+      community.crypto.jwt:
+        payload:
+          iat: "{{ (ansible_date_time.epoch | int) - 60 }}"
+          exp: "{{ (ansible_date_time.epoch | int) + 600 }}"
+          iss: "{{ lookup('file', github_app_app_id_file) | trim }}"
+        algorithm: RS256
+        private_key: "{{ lookup('file', github_app_private_key_file) }}"
       register: github_jwt
-      changed_when: false
-
-    - name: Créer un token d’installation GitHub App
-      uri:
+        - name: Créer un token d’installation GitHub App
+          uri:
         url: "https://api.github.com/app/installations/{{ github_app_installation_id }}/access_tokens"
         method: POST
         headers:

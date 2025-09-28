@@ -5,7 +5,9 @@ echo "🔹 Mise à jour et installation des paquets système"
 sudo -E apt update && sudo -E apt upgrade -y
 sudo apt install -y \
   zsh git curl wget jq tree unzip bash-completion make tar gzip python3-venv \
-  python3-pip python3-dev build-essential
+  python3-pip python3-dev build-essential \
+  ruby ruby-dev
+
 
 # Virtualenv Ansible
 ANSIBLE_VENV="$HOME/ansible_venv"
