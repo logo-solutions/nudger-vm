@@ -1,10 +1,10 @@
 ---
-- name: Read passwords from Vault
+- name: Lire les mots de passe depuis Vault
   ansible.builtin.set_fact:
     user_passwords: "{{ user_passwords | default({}) | combine({
       item.name: lookup(
         'community.hashi_vault.hashi_vault',
-        'secret=secret/data/users/' + item.name,
+        'secret=secret/data/users/' ~ item.name,
         token=vault_root_token,
         url=vault_addr,
         field='password',
@@ -12,10 +12,11 @@
       )
     }) }}"
   loop: "{{ users_k8s }}"
-- name: Ensure users exist
+
+- name: Créer les utilisateurs
   ansible.builtin.user:
     name: "{{ item.name }}"
-    groups: "{{ item.groups | join(',') }}"
+    groups: "{{ (item.groups | default([])) | join(',') }}"
     shell: /bin/bash
     create_home: true
     password: "{{ user_passwords[item.name] | password_hash('sha512') }}"
