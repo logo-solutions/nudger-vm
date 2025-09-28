@@ -3,10 +3,12 @@ set -euo pipefail
 
 ID_SSH="${ID_SSH:-id_vm_ed25519}"
 NAME="${1:-bastion}"
+HOSTNAME="${NAME}_host"   # éviter conflit groupe/host
 USER="root"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIRHOME="$(cd "$SCRIPT_DIR/../.." && pwd)"
+INVENTORY="$DIRHOME/infra/k8s_ansible/inventory.ini"
 
 # Prérequis
 for cmd in hcloud envsubst nc ssh ssh-keygen; do
@@ -39,12 +41,27 @@ for i in {1..30}; do
   if nc -z -w2 "$VM_IP" 22; then break; fi
   sleep 2
 done || { echo "❌ Timeout SSH"; exit 1; }
+
 ssh-keygen -R "$VM_IP" >/dev/null 2>&1 || true
 export bastion=$VM_IP
 echo "✅ SSH up"
-echo "./scripts/bastion/post-install-host.sh $VM_IP"
-echo "## depuis la VM"
-echo "ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
-echo "export PAT="
-echo "git clone "https://$PAT@github.com/logo-solutions/nudger-vm.git" || true"
-echo "~/nudger-vm/cripts/post-install-vm.sh"
+
+# --- Mise à jour inventaire ---
+echo "👉 Mise à jour de $INVENTORY"
+tmpfile=$(mktemp)
+
+# On conserve tout sauf anciennes entrées du bastion
+awk '!/bastion_host/ && !/^\[bastion\]$/ {print}' "$INVENTORY" > "$tmpfile" || true
+
+cat >> "$tmpfile" <<EOF
+
+[bastion]
+$HOSTNAME ansible_host=$VM_IP ansible_user=$USER ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+EOF
+
+mv "$tmpfile" "$INVENTORY"
+echo "✅ Inventaire mis à jour"
+
+# Instructions post-install
+echo "👉 Test SSH: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
+echo "👉 Test Ansible: ansible -i $INVENTORY $HOSTNAME -m ping"
