@@ -20,19 +20,23 @@
   tasks:
     - debug:
         var: user_passwords
-
 - name: Seed Vault avec les utilisateurs (mots de passe par défaut)
   hosts: bastion
   become: true
   vars:
-    vault_init_file: "{{ lookup('env','HOME') }}/.ansible/artifacts/bastion/vault-init.json"
+    vault_init_file: "/root/.ansible/artifacts/bastion/vault-init.json"
     vault_addr: "http://127.0.0.1:8200"
 
   tasks:
-    - name: Charger vault-init.json et extraire root_token
+    - name: Lire vault-init.json depuis le bastion
+      slurp:
+        src: "{{ vault_init_file }}"
+      register: vault_init_slurp
+
+    - name: Extraire root_token du JSON
       set_fact:
-        vault_init_data: "{{ lookup('file', vault_init_file) | from_json }}"
-        vault_root_token: "{{ (lookup('file', vault_init_file) | from_json).root_token }}"
+        vault_init_data: "{{ vault_init_slurp.content | b64decode | from_json }}"
+        vault_root_token: "{{ (vault_init_slurp.content | b64decode | from_json).root_token }}"
 
     - name: Debug - afficher le root_token tronqué
       debug:
