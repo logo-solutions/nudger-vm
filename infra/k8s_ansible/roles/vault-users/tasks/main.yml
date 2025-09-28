@@ -1,24 +1,25 @@
 ---
 # roles/vault-users/tasks/main.yml
-
 - name: Lire les mots de passe depuis Vault
   ansible.builtin.set_fact:
     user_passwords: "{{ user_passwords | default({}) | combine({
-      item.name: lookup(
-        'community.hashi_vault.hashi_vault',
-        'secret=secret/data/users/' ~ item.name,
-        token=vault_root_token,
-        url=vault_addr,
-        field='password',
-        default='changeme123'
+      item.name: (
+        lookup(
+          'community.hashi_vault.hashi_vault',
+          'secret=secret/data/users/' ~ item.name,
+          token=vault_root_token,
+          url=vault_addr,
+          field='password',
+          default='changeme123'
+        )
       )
     }) }}"
   loop: "{{ users_k8s }}"
 
 - name: Debug - Vérifier le contenu des mots de passe récupérés
   debug:
-    var: user_passwords
-  when: user_passwords is defined
+    msg: "Mot de passe pour {{ item.key }} = {{ item.value }}"
+  loop: "{{ user_passwords | dict2items }}"
 
 - name: Ensure users exist
   ansible.builtin.user:
