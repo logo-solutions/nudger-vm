@@ -58,8 +58,8 @@
         msg: "Clé GitHub App (head -3): {{ head_key.stdout_lines }}"
       when: key_stat.stat.exists
 
-    - name: Générer un JWT avec community.crypto (Python)
-      community.crypto.jwt:
+    - name: Générer un JWT avec community.general.jwt_encode
+      community.general.jwt_encode:
         payload:
           iat: "{{ (ansible_date_time.epoch | int) - 60 }}"
           exp: "{{ (ansible_date_time.epoch | int) + 600 }}"
