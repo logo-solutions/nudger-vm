@@ -21,7 +21,7 @@ source "$ANSIBLE_VENV/bin/activate"
 # Pip packages
 pip install --upgrade pip
 pip install "ansible-core>=2.16,<2.18" ansible-lint openshift kubernetes pyyaml passlib
-
+pip install hvac
 # Collections indispensables
 ansible-galaxy collection install kubernetes.core ansible.posix community.general community.crypto community.hashi_vault --force
 # Depuis requirements.yml
