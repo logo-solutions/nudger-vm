@@ -47,6 +47,8 @@ echo "ssh -i ~/.ssh/id_vm_ed25519 root@65.21.4.55 \"mkdir -p /etc/github-app && 
 echo "scp -i ~/.ssh/id_vm_ed25519 \
   ~/Downloads/nudger-vm-003.2025-09-27.private-key.pem \
   root@$VM_IP:/etc/github-app/nudger-vm.private-key.pem"
+echo "ssh -i ~/.ssh/id_vm_ed25519 root@$VM_IP \
+  \"chown root:root /etc/github-app/nudger-vm.private-key.pem && chmod 600 /etc/github-app/nudger-vm.private-key.pem\""
 echo "👉 Connexion: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
 echo "depuis la VM > git clone https://PAT@github.com/logo-solutions/nudger-vm.git"
 echo "depuis la VM > ~/nudger-vm/scripts/install-ansible.sh"
