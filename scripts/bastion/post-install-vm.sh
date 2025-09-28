@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PAT="${PAT:?PAT manquant (export PAT=...)}"
+
+echo "👉 Clonage du repo nudger-vm"
+git clone "https://$PAT@github.com/logo-solutions/nudger-vm.git" || true
+
+echo "👉 Chargement du profil bash"
+source ~/nudger-vm/config-vm/profile_logo.sh
+
+echo "👉 Installation Ansible"
+~/nudger-vm/scripts/bastion/install-ansible.sh
+
+echo "👉 Activation venv + lancement des playbooks"
+source ~/ansible_venv/bin/activate
+cd ~/nudger-vm/infra/k8s_ansible
+
+ansible-playbook -i inventory.ini playbooks/bastion/site.bastion.yml
+ansible-playbook -i inventory.ini playbooks/bastion/007a-install-init-vault.yml
+
+export VAULT_ADDR=http://127.0.0.1:8200
+export VAULT_TOKEN=$(jq -r .root_token /root/.ansible/artifacts/bastion/vault-init.json)
+
+vault kv put secret/users/kubernetes-admin password="changeme123"
+vault kv put secret/users/ops-loic password="changeme123"
+vault kv put secret/users/dev-loic password="changeme123"
+
+ansible-playbook -i inventory.ini playbooks/bastion/007b-seed-vault.yml
+
+echo "✅ Post-install terminé."
