@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PAT="${PAT:?PAT manquant (export PAT=...)}"
-
-echo "👉 Clonage du repo nudger-vm"
-git clone "https://$PAT@github.com/logo-solutions/nudger-vm.git" || true
-
 echo "👉 Chargement du profil bash"
 source ~/nudger-vm/config-vm/profile_logo.sh
 

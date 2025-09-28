@@ -42,25 +42,9 @@ done || { echo "❌ Timeout SSH"; exit 1; }
 ssh-keygen -R "$VM_IP" >/dev/null 2>&1 || true
 export bastion=$VM_IP
 echo "✅ SSH up"
-
-# GitHub App secret
-echo "depuis hote > ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP \"mkdir -p /etc/github-app && chmod 700 /etc/github-app\""
-echo "depuis hote > scp -i ~/.ssh/${ID_SSH} ~/Downloads/nudger-vm-003.2025-09-27.private-key.pem \
-  $USER@$VM_IP:/etc/github-app/nudger-vm.private-key.pem"
-echo "depuis hote > ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP \"chown root:root /etc/github-app/nudger-vm.private-key.pem && chmod 600 /etc/github-app/nudger-vm.private-key.pem\""
-
-echo "depuis hote > 👉 Connexion: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
-echo "la suite se passe sur la VM"
-echo "PAT=<patdepuisbitwarden>"
-echo "👉 Depuis la VM :git clone https://\$PAT@github.com/logo-solutions/nudger-vm.git"
-echo " source ~/nudger-vm/config-vm/profile_logo.sh
-echo "👉 Puis : ~/nudger-vm/scripts/bastion/install-ansible.sh"
-echo "👉 Ensuite : source ~/ansible_venv/bin/activate && cd ~/nudger-vm/infra/k8s_ansible"
-echo " ansible-playbook -i inventory.ini playbooks/bastion/site.bastion.yml"
-echo "ansible-playbook -i inventory.ini playbooks/bastion/007a-install-init-vault.yml"
-echo "export VAULT_ADDR=http://127.0.0.1:8200"
-echo "export VAULT_TOKEN=\$(jq -r .root_token /root/.ansible/artifacts/bastion/vault-init.json)"
-echo "vault kv put secret/users/kubernetes-admin password=\"changeme123\""
-echo "vault kv put secret/users/ops-loic password=\"changeme123\""
-echo "vault kv put secret/users/dev-loic password=\"changeme123\""
-echo "ansible-playbook -i inventory.ini playbooks/bastion/007b-seed-vault.yml"
+echo "./scripts/bastion/post-install-host.sh $VM_IP"
+echo "## depuis la VM"
+echo "ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
+echo "export PAT="
+echo "git clone "https://$PAT@github.com/logo-solutions/nudger-vm.git" || true"
+echo "~/nudger-vm/cripts/post-install-vm.sh"
