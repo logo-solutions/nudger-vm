@@ -1,83 +1,66 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -e
 
-ID_SSH="${ID_SSH:-id_vm_ed25519}"   # clé SSH par défaut
-NAME="${1:-bastion}"
-USER="root"
+# 🔹 Mise à jour système et installation des dépendances
+echo "🔹 Mise à jour et installation des paquets système (sudo requis)"
+sudo -E apt update && sudo -E apt upgrade -y
+sudo apt install -y zsh git curl wget jq tree unzip bash-completion make tar gzip python3-venv
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DIRHOME="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# 🔹 Virtualenv pour Ansible
+ANSIBLE_VENV="$HOME/ansible_venv"
 
-# Vérif prérequis côté local
-for cmd in hcloud envsubst nc ssh ssh-keygen scp; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "❌ $cmd manquant"; exit 1; }
-done
-[[ -f "$HOME/.ssh/${ID_SSH}" ]] || { echo "❌ clé privée SSH absente"; exit 1; }
+create_ansible_venv() {
+    echo "🔹 Création du virtualenv Ansible dans $ANSIBLE_VENV"
+    python3 -m venv "$ANSIBLE_VENV"
+}
 
-# Générer cloud-init
-envsubst < "$DIRHOME/create-VM/vps/cloud-init-template.yaml" \
-  > "$DIRHOME/create-VM/vps/cloud-init.yaml"
-
-# Supprimer VM si existante
-if hcloud server describe "$NAME" >/dev/null 2>&1; then
-  hcloud server delete "$NAME"
+if [ ! -d "$ANSIBLE_VENV" ] || [ ! -f "$ANSIBLE_VENV/bin/activate" ]; then
+    echo "⚠️  Virtualenv manquant ou incomplet. Reconstruction..."
+    rm -rf "$ANSIBLE_VENV"
+    create_ansible_venv
+else
+    echo "✅ Virtualenv Ansible déjà présent."
 fi
 
-# Créer VM Hetzner
-OUTPUT="$(hcloud server create \
-  --name "$NAME" \
-  --image ubuntu-22.04 \
-  --type cpx31 \
-  --user-data-from-file "$DIRHOME/create-VM/vps/cloud-init.yaml" \
-  --ssh-key loic-vm-key)"
+# Activation et installation des packages Python
+source "$ANSIBLE_VENV/bin/activate"
+pip install --upgrade pip
+pip install "ansible-core>=2.16,<2.18" ansible-lint openshift kubernetes pyyaml
 
-VM_IP="$(echo "$OUTPUT" | awk '/IPv4:/ {print $2}')"
-echo "✅ VM $NAME IP: $VM_IP"
+# 🔹 Collections indispensables
+ansible-galaxy collection install kubernetes.core ansible.posix community.general --force
 
-# Attendre SSH up
-for i in {1..30}; do
-  if nc -z -w2 "$VM_IP" 22; then break; fi
-  sleep 2
-done || { echo "❌ Timeout SSH"; exit 1; }
+# 🔹 Collections depuis requirements.yml (si présent)
+REQUIREMENTS_FILE="$HOME/nudger/infra/k8s-ansible/requirements.yml"
+if [ -f "$REQUIREMENTS_FILE" ]; then
+    echo "🔹 Installation des collections depuis requirements.yml"
+    ansible-galaxy collection install -r "$REQUIREMENTS_FILE" --force
+fi
 
-ssh-keygen -R "$VM_IP" >/dev/null 2>&1 || true
-echo "✅ SSH up"
+echo "🔹 Versions installées :"
+ansible --version
 
-# -------------------------------------------------------------------
-# 🔹 Bootstrap bastion : paquets système + venv Ansible
-# -------------------------------------------------------------------
-ssh -i "$HOME/.ssh/${ID_SSH}" $USER@$VM_IP <<'EOF'
-  set -e
-  export DEBIAN_FRONTEND=noninteractive
-  apt update && apt upgrade -y
-  apt install -y git curl wget jq unzip bash-completion python3-venv tree
+# 🔹 fzf
+if [ ! -d "$HOME/.fzf" ]; then
+    echo "🔹 Installation de fzf"
+    git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
+    ~/.fzf/install --all
+fi
 
-  # Virtualenv Ansible
-  ANSIBLE_VENV="$HOME/ansible_venv"
-  if [ ! -d "\$ANSIBLE_VENV" ]; then
-    python3 -m venv "\$ANSIBLE_VENV"
-    source "\$ANSIBLE_VENV/bin/activate"
-    pip install --upgrade pip
-    pip install "ansible-core>=2.16,<2.18" ansible-lint openshift kubernetes pyyaml passlib
-    ansible-galaxy collection install \
-      kubernetes.core ansible.posix community.general community.hashi_vault --force
-  fi
-EOF
+# 🔹 lazygit
+if ! command -v lazygit &> /dev/null; then
+    echo "🔹 Installation de lazygit"
+    LAZYGIT_VERSION=$(curl -s "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" \
+        | grep -Po '"tag_name": "v\K[^"]*')
+    curl -Lo lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_${LAZYGIT_VERSION}_Linux_x86_64.tar.gz"
+    tar xf lazygit.tar.gz lazygit
+    mkdir -p "$HOME/bin"
+    mv lazygit "$HOME/bin/"
+    rm -rf lazygit.tar.gz
+    # Ajouter au PATH si nécessaire
+    if ! grep -q 'export PATH=$HOME/bin:$PATH' ~/.bashrc; then
+        echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc
+    fi
+fi
 
-# -------------------------------------------------------------------
-# 🔹 Rappel : gestion secrets GitHub App
-# -------------------------------------------------------------------
-echo "⚠️  Copie ta clé privée GitHub App sur le bastion :"
-echo "scp -i ~/.ssh/${ID_SSH} ~/Downloads/nudger-vm-003.2025-09-27.private-key.pem \\"
-echo "    $USER@$VM_IP:/etc/github-app/nudger-vm.private-key.pem"
-echo "ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP \\"
-echo "    'chown root:root /etc/github-app/nudger-vm.private-key.pem && chmod 600 /etc/github-app/nudger-vm.private-key.pem'"
-
-# -------------------------------------------------------------------
-# 🔹 Infos de connexion et workflow
-# -------------------------------------------------------------------
-echo "👉 Connexion: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
-echo "👉 Ensuite :"
-echo "   source ~/ansible_venv/bin/activate"
-echo "   cd ~/nudger-vm/infra/k8s_ansible"
-echo "   ansible-playbook -i inventory.ini playbooks/bastion/001-setup-github-deploykey.yml"
+echo "✅ Installation terminée !"
