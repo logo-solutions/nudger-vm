@@ -1,0 +1,4 @@
+---
+- name: Restart github-app-token
+  debug:
+    msg: "⚠️ Pense à relancer manuellement les services dépendants du token (par ex: git clone avec JWT)."

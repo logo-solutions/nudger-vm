@@ -2,7 +2,6 @@
 users_k8s:
   - name: kubernetes-admin
     groups: ["sudo"]
-    password: "$6$Dm6zU4AbJZ8PWHer$enpO4r2M3klnPgDr8RsBBUh3kaB4UCgHtjoQfRj2xvis5DOoU/Nn/c9ZFR0RhtOi4Zl69s0l9WVERTZoa5LrQ0"
     kubeconfig: /etc/kubernetes/admin.conf
     ssh_public_key: "{{ lookup('file', '~/.ssh/id_vm_ed25519.pub') }}"
     git_repos:
@@ -10,46 +9,16 @@ users_k8s:
         dest_rel: nudger-gitops
       - repo: git@github.com:loicgo29/nudger.git
         dest_rel: nudger
-      - repo: git@github.com:loicgo29/nudger-infra.git
-        dest_rel: nudger
     git_identity:
       - { key: "user.name",  value: "LoGo" }
       - { key: "user.email", value: "loicgourmelon@gmail.com" }
 
-  - name: ops-loic-1
+  - name: ops-loic
     groups: [sudo, ansible, k8s, dev]
-    kubeconfig: /home/kubernetes-admin/.kube/config
-    sudo_nopass: true # si tu veux NOPASSWD (selon ta policy)
+    sudo_nopass: true
     ssh_public_key: "{{ lookup('file', '~/.ssh/id_vm_ed25519.pub') }}"
-    password: "$6$Dm6zU4AbJZ8PWHer$enpO4r2M3klnPgDr8RsBBUh3kaB4UCgHtjoQfRj2xvis5DOoU/Nn/c9ZFR0RhtOi4Zl69s0l9WVERTZoa5LrQ0"
-    git_repos:
-      - repo: git@github.com:loicgo29/nudger-gitops.git
-        dest_rel: nudger-gitops
-      - repo: git@github.com:loicgo29/nudger.git
-        dest_rel: nudger
-    git_identity:
-      - { key: "user.name",  value: "LoGo" }
-      - { key: "user.email", value: "loicgourmelon@gmail.com" }
 
   - name: dev-loic
     groups: [sudo, ansible, k8s, dev]
-    kubeconfig: /home/kubernetes-admin/.kube/config
-    sudo_nopass: true # si tu veux NOPASSWD (selon ta policy)
+    sudo_nopass: true
     ssh_public_key: "{{ lookup('file', '~/.ssh/id_vm_ed25519.pub') }}"
-    password: "$6$Dm6zU4AbJZ8PWHer$enpO4r2M3klnPgDr8RsBBUh3kaB4UCgHtjoQfRj2xvis5DOoU/Nn/c9ZFR0RhtOi4Zl69s0l9WVERTZoa5LrQ0"
-    git_repos:
-      - repo: git@github.com:loicgo29/nudger-gitops.git
-        dest_rel: nudger-gitops
-      - repo: git@github.com:loicgo29/nudger.git
-        dest_rel: nudger
-    git_identity:
-      - { key: "user.name",  value: "LoGo" }
-      - { key: "user.email", value: "loicgourmelon@gmail.com" }
-ansible_python_interpreter: /usr/bin/python3
-docker_manage_daemon: false
-github_owner: "loicgo29"
-github_repo: "nudger-gitops" # ou le nom choisi
-github_branch: "main"
-env: staging # ou prod
-tools_symlinks:
-  - { name: "fzf", src: "/opt/fzf/bin/fzf" }

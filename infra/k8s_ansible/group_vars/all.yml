@@ -1,101 +1,38 @@
----
-github_app_id: "2024451"
-github_app_installation_id: "87738262"
 # ===========================
-#  KUBERNETES / CLUSTER BASE
+#  GITHUB APP (BASTION)
 # ===========================
-# Version K8s cible (utile pour d’autres rôles). Le "v" est souvent superflu.
-# CIDR du réseau pods (Flannel par défaut)
-pod_network_cidr: "10.244.0.0/16"
-# Sous-réseau des Services (kubeadm ClusterConfiguration.networking.serviceSubnet)
-service_subnet: "10.96.0.0/12"
-# SANs supplémentaires pour le certificat de l'apiserver
-# (127.0.0.1 indispensable, + IP du nœud et noms d'hôte)
-apiserver_cert_sans:
-  - "127.0.0.1"
-  - "{{ ansible_default_ipv4.address | default('') }}"
-  - "{{ inventory_hostname }}"
-  - "{{ ansible_fqdn | default(inventory_hostname) }}"
-# Kubeconfig côté nœud (admin) + kubeconfig utilisé par les modules Ansible
-kubeconfig_admin_path: "/etc/kubernetes/admin.conf"
-kubeconfig: "/root/.kube/config" # la plupart des tasks utilisent celui-ci
-# CNI Flannel (si tu l’installes via Ansible ailleurs)
-flannel_manifest_url: "https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml"
-flannel_wait_timeout: "5m"
-# Autoriser le scheduling sur control-plane si cluster mono-nœud
-allow_scheduling_on_control_plane: true
-# ===========================
-#  UX / OUTILS (optionnel)
-# ===========================
-install_kubectx: true
-install_kubens: true
-kubectx_checkout_dir: "/opt/kubectx"
-# Helpers shell (qualité de vie)
-bash_aliases_enable: true
-kubectl_completion_enable: true
-# Ne clone pas des repos utilisateurs tant que l’SSH n’est pas prêt
-users_clone_repos: false
-# ===========================
-#  FLUXCD (INSTALL)
-# ===========================
-flux_namespace: "flux-system"
-flux_version: "2.3.0"
-# (optionnel mais recommandé) SHA256 de l’archive flux pour intégrité
-# flux_checksum: "sha256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-flux_bin: "/usr/local/bin/flux"
-# Intervalles de reconciliation
-git_sync_interval: "15m" # GitRepository
-kustomize_interval: "1m" # Kustomization root(s)
-# Timeout par défaut pour Kustomization (évite les "context deadline exceeded")
-kustomize_timeout: "5m"
-# Secret Git utilisé par Flux pour accéder au repo GitOps
-git_secret_name: "gitops-credentials"
-# ===========================
-#  REPO GITOPS (UNIQUE)
-# ===========================
-gitops:
-  github_owner: "loicgo29" # <— TON org/user GitHub
-  github_repo: "nudger-gitops" # <— TON repo GitOps live
-  branch: "main"
-  # Choisir UNE méthode d’auth :
-  use_github_pat: true # HTTPS + PAT (simple)
-  use_deploy_key: false # SSH deploy key (sinon false)
-# URLs du repo GitOps (construites depuis ci-dessus)
-git_https_url: "https://github.com/{{ gitops.github_owner }}/{{ gitops.github_repo
-  }}.git"
-git_ssh_url: "git@github.com:{{ gitops.github_owner }}/{{ gitops.github_repo }}.git"
-# ===========================
-#  AUTHENT / SECRETS
-# ===========================
-# Idéalement fournis par Ansible Vault (vault_github_pat, etc.)
-github:
-  pat: "{{ vault_github_pat | default('') }}" # PAT avec scope repo en lecture
-  repo_ssh_url: "{{ git_ssh_url }}"
-  deploy_key_private: "{{ vault_git_deploy_key_private | default('') }}"
-  deploy_key_public: "{{ vault_git_deploy_key_public  | default('') }}"
-# ===========================
-#  ENVIRONNEMENTS GITOPS
-# ===========================
-# Kustomization(s) racine(s). Commence simple avec "lab".
-gitops_envs:
-  - "lab"
-  # - "staging"
-  # - "prod"
-# ===========================
-#  BINAIRES / DIVERS
-# ===========================
-bin_dir: "/usr/local/bin"
-# Compat (si certains anciens tasks utilisent ce nom)
-kubeconfig_path: "{{ kubeconfig_admin_path }}"
-kubeconfig_user_path: "/home/{{ ansible_user }}/.kube/config"
-# Pour compat ascendante si certains rôles lisent directement cette var
-github_pat: "{{ vault_github_pat | default('') }}"
-k8s_version: "1.31.12-1.1"
-kubernetes_packages:
-  - "kubeadm={{ k8s_version }}"
-  - "kubelet={{ k8s_version }}"
-  - "kubectl={{ k8s_version }}"
+github_app_id: "2024451"               # utilisé seulement par bastion
+github_app_installation_id: "87738262" # idem
+github_app_secrets_dir: "/etc/github-app"
+github_app_private_key_file: "{{ github_app_secrets_dir }}/nudger-vm.private-key.pem"
 
+# ===========================
+#  GITHUB APP (NOEUDS via Vault)
+# ===========================
+vault_addr: "http://127.0.0.1:8200"
+# ⚠️ idéalement tu stockes vault_root_token en Ansible Vault, pas en clair
+vault_root_token: "{{ lookup('env', 'VAULT_TOKEN') | default('root-token-de-test') }}"
 
-egress_nat_pod_cidr: "10.244.0.0/24"
-egress_nat_svc_cidr: "10.96.0.0/12"
+github_app_id_vault: >-
+  {{ lookup('community.hashi_vault.hashi_vault',
+            'secret=secret/data/github_app
+             token=' ~ vault_root_token ~ '
+             url=' ~ vault_addr ~ '
+             field=app_id')
+     | default('') }}
+
+github_app_installation_id_vault: >-
+  {{ lookup('community.hashi_vault.hashi_vault',
+            'secret=secret/data/github_app
+             token=' ~ vault_root_token ~ '
+             url=' ~ vault_addr ~ '
+             field=installation_id')
+     | default('') }}
+
+github_app_token_vault: >-
+  {{ lookup('community.hashi_vault.hashi_vault',
+            'secret=secret/data/github_app
+             token=' ~ vault_root_token ~ '
+             url=' ~ vault_addr ~ '
+             field=token')
+     | default('') }}

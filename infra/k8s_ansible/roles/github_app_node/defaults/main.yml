@@ -1,0 +1,12 @@
+---
+# Répertoire où doivent être stockés les secrets GitHub App
+github_app_secrets_dir: "/etc/github-app"
+
+# Valeurs logiques (doivent être définies dans group_vars ou inventaire)
+github_app_id: ""
+github_app_installation_id: ""
+
+# Fichiers secrets attendus
+github_app_app_id_file: "{{ github_app_secrets_dir }}/APP_ID"
+github_app_installation_id_file: "{{ github_app_secrets_dir }}/INSTALLATION_ID"
+github_app_private_key_file: "{{ github_app_secrets_dir }}/nudger-vm.private-key.pem"

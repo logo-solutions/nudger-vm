@@ -1,0 +1,49 @@
+---
+- name: Lire github_app_id depuis Vault
+  ansible.builtin.set_fact:
+    github_app_id: >-
+      {{ lookup('community.hashi_vault.hashi_vault',
+                'secret=secret/data/github_app
+                 token=' ~ vault_root_token ~ '
+                 url=' ~ vault_addr ~ '
+                 field=app_id')
+         | default('') }}
+
+- name: Lire github_app_installation_id depuis Vault
+  ansible.builtin.set_fact:
+    github_app_installation_id: >-
+      {{ lookup('community.hashi_vault.hashi_vault',
+                'secret=secret/data/github_app
+                 token=' ~ vault_root_token ~ '
+                 url=' ~ vault_addr ~ '
+                 field=installation_id')
+         | default('') }}
+
+- name: Lire un GITHUB_TOKEN si présent dans Vault
+  ansible.builtin.set_fact:
+    github_app_token: >-
+      {{ lookup('community.hashi_vault.hashi_vault',
+                'secret=secret/data/github_app
+                 token=' ~ vault_root_token ~ '
+                 url=' ~ vault_addr ~ '
+                 field=token')
+         | default('') }}
+
+- name: Créer /etc/github-app sur le nœud
+  ansible.builtin.file:
+    path: /etc/github-app
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Déployer un fichier env avec les infos GitHub App
+  ansible.builtin.copy:
+    dest: /etc/github-app/node-config.env
+    content: |
+      GITHUB_APP_ID={{ github_app_id }}
+      GITHUB_APP_INSTALLATION_ID={{ github_app_installation_id }}
+      GITHUB_TOKEN={{ github_app_token }}
+    owner: root
+    group: root
+    mode: '0600'
