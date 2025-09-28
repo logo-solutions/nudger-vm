@@ -1,0 +1,18 @@
+---
+- name: Installer et initialiser Vault
+  hosts: bastion
+  become: true
+  roles:
+    - vault
+
+- name: Créer les utilisateurs via Vault
+  hosts: bastion
+  become: true
+  roles:
+    - vault-users
+
+- name: Debug des mots de passe utilisateurs
+  hosts: bastion
+  tasks:
+    - debug:
+        var: user_passwords
