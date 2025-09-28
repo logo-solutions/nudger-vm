@@ -5,7 +5,7 @@
   connection: local
 
   vars:
-    ansible_venv: "{{ lookup('env','PWD') }}/ansible_venv"
+    ansible_venv: "{{ lookup('env','HOME') }}/ansible_venv"
 
   tasks:
     - name: Vérifier que le virtualenv existe
