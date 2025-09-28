@@ -1,0 +1,30 @@
+---
+- name: Installer passlib pour Ansible
+  hosts: localhost
+  gather_facts: no
+  connection: local
+
+  vars:
+    ansible_venv: "{{ lookup('env','PWD') }}/ansible_venv"
+
+  tasks:
+    - name: Vérifier que le virtualenv existe
+      ansible.builtin.stat:
+        path: "{{ ansible_venv }}"
+      register: venv_path
+
+    - name: Installer passlib dans le venv
+      ansible.builtin.pip:
+        name: passlib[bcrypt]
+        virtualenv: "{{ ansible_venv }}"
+      when: venv_path.stat.exists
+
+    - name: Debug version de passlib installée
+      ansible.builtin.command: "{{ ansible_venv }}/bin/python -m pip show passlib"
+      register: pip_info
+      changed_when: false
+      when: venv_path.stat.exists
+
+    - debug:
+        var: pip_info.stdout_lines
+      when: pip_info is defined
