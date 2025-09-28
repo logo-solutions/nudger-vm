@@ -20,7 +20,11 @@
   debug:
     msg: "Mot de passe pour {{ item.key }} = {{ item.value }}"
   loop: "{{ user_passwords | dict2items }}"
-
+- name: Ensure required groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ users_k8s | map(attribute='groups') | flatten | unique }}"
 - name: Ensure users exist
   ansible.builtin.user:
     name: "{{ item.name }}"
