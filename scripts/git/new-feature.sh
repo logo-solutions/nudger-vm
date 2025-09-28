@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./new-feature.sh <feature_name> <type> [--pr=draft|open|never]
-# ex:    ./new-feature.sh xwiki feat --pr=draft
+# git-new-feature.sh — crée une branche feature et éventuellement une PR
+# Usage: ./git-new-feature.sh <feature_name> <type> [--pr=draft|open|never]
+# Exemple: ./git-new-feature.sh xwiki feat --pr=draft
+
 feature="${1:?feature manquant}"
 type="${2:?type manquant (feat|fix|chore|...)}"
 pr_mode="${3:---pr=draft}"
@@ -12,10 +14,17 @@ today=$(date +%Y%m%d)
 branch_name="${type}/${today}-${feature}"
 base_branch="${BASE_BRANCH:-main}"
 remote="${REMOTE:-origin}"
+default_remote_url="git@github.com:logo-solutions/nudger-vm.git"
+
+# Sanity: corrige le remote si nécessaire
+if ! git remote get-url "$remote" >/dev/null 2>&1; then
+  echo "⚠️ Remote '$remote' absent, création avec $default_remote_url"
+  git remote add "$remote" "$default_remote_url"
+fi
 
 # Sanity: gh CLI ?
 if ! command -v gh >/dev/null 2>&1; then
-  echo "⚠️  gh non trouvé. Installe gh ou exporte --pr=never" >&2
+  echo "⚠️  gh non trouvé. PR skip forcé (--pr=never)" >&2
   pr_mode="never"
 fi
 
@@ -46,12 +55,10 @@ case "$pr_mode" in
     fi
     # Skip si PR existe déjà
     if gh pr view "$branch_name" --head "$branch_name" >/dev/null 2>&1; then
-      echo "ℹ️  PR existe déjà pour $branch_name, on ne recrée pas."; exit 0
+      echo "ℹ️  PR existe déjà pour $branch_name."; exit 0
     fi
-    # Titre/description
     title="$branch_name"
     body="Branche créée automatiquement le $today pour *$feature*"
-    # Si aucun commit au-delà de base, crée quand même en Draft (visibilité)
     range_commits=$(git rev-list "$remote/$base_branch"..HEAD || true)
     extra_args=()
     [ "$pr_mode" = "draft" ] && extra_args+=(--draft)
@@ -63,8 +70,7 @@ case "$pr_mode" in
       --body "$body" \
       "${extra_args[@]}"
     ;;
-  *)
-    echo "❌ --pr doit être draft|open|never"; exit 2 ;;
+  *) echo "❌ --pr doit être draft|open|never"; exit 2 ;;
 esac
 
 echo "✅ Branche '$branch_name' poussée et PR ($pr_mode) créée si applicable."

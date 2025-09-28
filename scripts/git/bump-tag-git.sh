@@ -1,5 +1,17 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
+
+# git-bump-tag.sh — incrémente automatiquement version sémantique
+# Usage: ./git-bump-tag.sh
+
+remote="${REMOTE:-origin}"
+default_remote_url="git@github.com:logo-solutions/nudger-vm.git"
+
+# Sanity: corrige le remote si nécessaire
+if ! git remote get-url "$remote" >/dev/null 2>&1; then
+  echo "⚠️ Remote '$remote' absent, création avec $default_remote_url"
+  git remote add "$remote" "$default_remote_url"
+fi
 
 # Récupère le dernier tag, ou v0.0.0 s'il n'y en a pas
 last_tag=$(git tag --sort=-v:refname | head -n 1)
@@ -12,21 +24,17 @@ last_commit_msg=$(git log -1 --pretty=%B)
 
 # Détermine quel numéro incrémenter
 if [[ $last_commit_msg =~ BREAKING ]]; then
-  major=$((major + 1))
-  minor=0
-  patch=0
+  major=$((major + 1)); minor=0; patch=0
 elif [[ $last_commit_msg =~ ^feat ]]; then
-  minor=$((minor + 1))
-  patch=0
+  minor=$((minor + 1)); patch=0
 else
   patch=$((patch + 1))
 fi
 
-# Nouvelle version
 new_tag="v${major}.${minor}.${patch}"
 
 # Création et push du tag
 git tag -a "$new_tag" -m "Release $new_tag"
-git push origin "$new_tag"
+git push "$remote" "$new_tag"
 
 echo "✅ Tag $new_tag créé et poussé automatiquement !"
