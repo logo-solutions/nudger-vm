@@ -20,6 +20,10 @@
   tasks:
     - debug:
         var: user_passwords
+- name: Debug vault_init_file avant slurp
+  debug:
+    msg: "vault_init_file = {{ vault_init_file }} (type={{ vault_init_file | type_debug }})"
+
 - name: Seed Vault avec les utilisateurs (mots de passe par défaut)
   hosts: bastion
   become: true
@@ -32,11 +36,14 @@
       slurp:
         src: "{{ vault_init_file }}"
       register: vault_init_slurp
+    - name: Debug slurp result
+      debug:
+        var: vault_init_slurp
 
     - name: Extraire root_token du JSON
       set_fact:
         vault_init_data: "{{ vault_init_slurp.content | b64decode | from_json }}"
-        vault_root_token: "{{ (vault_init_slurp.content | b64decode | from_json).root_token }}"
+        vault_root_token: "{{ vault_init_data.root_token }}"
 
     - name: Debug - afficher le root_token tronqué
       debug:
