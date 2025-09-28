@@ -17,6 +17,6 @@
       changed_when: false
       failed_when: vault_token.rc != 0
 
-    - debug:
-      msg: "Root token = {{ vault_token.stdout | regex_replace('(.{6}).*', '\\1...') }}"
-
+    - name: Debug - afficher root_token tronqué
+      debug:
+        msg: "Root token = {{ vault_token.stdout | regex_replace('(.{6}).*', '\\1...') }}"
