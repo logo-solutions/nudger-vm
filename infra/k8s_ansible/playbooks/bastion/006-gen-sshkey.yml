@@ -1,0 +1,23 @@
+---
+- name: Générer une clé SSH ed25519 pour les VMs
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    ssh_key_path: "{{ lookup('env','HOME') }}/.ssh/id_vm_ed25519"
+    ssh_key_comment: "loicgourmelon"
+
+  tasks:
+    - name: Générer la clé SSH ed25519 si absente
+      community.crypto.openssh_keypair:
+        path: "{{ ssh_key_path }}"
+        type: ed25519
+        comment: "{{ ssh_key_comment }}"
+        mode: '0600'
+        state: present
+      register: ssh_keypair
+
+    - name: Afficher la clé publique
+      debug:
+        msg: "{{ ssh_keypair.public_key }}"
