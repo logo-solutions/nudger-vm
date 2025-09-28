@@ -20,9 +20,6 @@
   tasks:
     - debug:
         var: user_passwords
-- name: Debug vault_init_file avant slurp
-  debug:
-    msg: "vault_init_file = {{ vault_init_file }} (type={{ vault_init_file | type_debug }})"
 
 - name: Seed Vault avec les utilisateurs (mots de passe par défaut)
   hosts: bastion
@@ -32,22 +29,34 @@
     vault_addr: "http://127.0.0.1:8200"
 
   tasks:
+    - name: Debug vault_init_file avant slurp
+      debug:
+        msg: "vault_init_file = {{ vault_init_file }} (type={{ vault_init_file | type_debug }})"
+
     - name: Lire vault-init.json depuis le bastion
       slurp:
         src: "{{ vault_init_file }}"
       register: vault_init_slurp
-    - name: Debug slurp result
+
+    - name: Debug du résultat brut du slurp
       debug:
         var: vault_init_slurp
 
-    - name: Extraire root_token du JSON
+    - name: Décoder le contenu JSON
       set_fact:
         vault_init_data: "{{ vault_init_slurp.content | b64decode | from_json }}"
+
+    - name: Debug contenu JSON décodé
+      debug:
+        var: vault_init_data
+
+    - name: Extraire root_token
+      set_fact:
         vault_root_token: "{{ vault_init_data.root_token }}"
 
-    - name: Debug - afficher le root_token tronqué
+    - name: Debug - root_token tronqué
       debug:
-        msg: "Root token récupéré: {{ vault_root_token | regex_replace('(.{6}).*', '\\1...') }}"
+        msg: "Root token = {{ vault_root_token | regex_replace('(.{6}).*', '\\1...') }}"
 
     - name: Exporter variables d’env pour Vault (dans facts Ansible)
       set_fact:
