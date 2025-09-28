@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ID_SSH="${ID_SSH:-id_vm_ed25519}"   # clé par défaut
+ID_SSH="${ID_SSH:-id_vm_ed25519}"
 NAME="${1:-bastion}"
 USER="root"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIRHOME="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Vérif prérequis
+# Prérequis
 for cmd in hcloud envsubst nc ssh ssh-keygen; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "❌ $cmd manquant"; exit 1; }
 done
 [[ -f "$HOME/.ssh/${ID_SSH}" ]] || { echo "❌ clé privée SSH absente"; exit 1; }
 
-# Générer cloud-init
+# cloud-init
 envsubst < "$DIRHOME/create-VM/vps/cloud-init-template.yaml" \
   > "$DIRHOME/create-VM/vps/cloud-init.yaml"
 
-# Supprimer VM si existante
+# Supprimer VM existante
 if hcloud server describe "$NAME" >/dev/null 2>&1; then
   hcloud server delete "$NAME"
 fi
@@ -34,24 +34,23 @@ OUTPUT="$(hcloud server create \
 VM_IP="$(echo "$OUTPUT" | awk '/IPv4:/ {print $2}')"
 echo "✅ VM $NAME IP: $VM_IP"
 
-# Attendre SSH
+# Attente SSH
 for i in {1..30}; do
   if nc -z -w2 "$VM_IP" 22; then break; fi
   sleep 2
 done || { echo "❌ Timeout SSH"; exit 1; }
-
-echo "✅ SSH up"
 ssh-keygen -R "$VM_IP" >/dev/null 2>&1 || true
 export bastion=$VM_IP
-echo "ssh -i ~/.ssh/id_vm_ed25519 root@65.21.4.55 \"mkdir -p /etc/github-app && chmod 700 /etc/github-app\""
-echo "scp -i ~/.ssh/id_vm_ed25519 \
-  ~/Downloads/nudger-vm-003.2025-09-27.private-key.pem \
-  root@$VM_IP:/etc/github-app/nudger-vm.private-key.pem"
-echo "ssh -i ~/.ssh/id_vm_ed25519 root@$VM_IP \
-  \"chown root:root /etc/github-app/nudger-vm.private-key.pem && chmod 600 /etc/github-app/nudger-vm.private-key.pem\""
+echo "✅ SSH up"
+
+# GitHub App secret
+echo "ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP \"mkdir -p /etc/github-app && chmod 700 /etc/github-app\""
+echo "scp -i ~/.ssh/${ID_SSH} ~/Downloads/nudger-vm-003.2025-09-27.private-key.pem \
+  $USER@$VM_IP:/etc/github-app/nudger-vm.private-key.pem"
+echo "ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP \"chown root:root /etc/github-app/nudger-vm.private-key.pem && chmod 600 /etc/github-app/nudger-vm.private-key.pem\""
+
+# Post-install
 echo "👉 Connexion: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
-echo "depuis la VM > git clone https://PAT@github.com/logo-solutions/nudger-vm.git"
-echo "depuis la VM > ~/nudger-vm/scripts/install-ansible.sh"
-echo " source ~/ansible_venv/bin/activate"
-echo "cd ~/nudger-vm/infra/k8s_ansible"
-echo "ansible-playbook -i inventory.ini playbooks/"
+echo "👉 Depuis la VM : git clone git@github.com:loicgo29/nudger-vm.git"
+echo "👉 Puis : ~/nudger-vm/scripts/bastion/install-ansible.sh"
+echo "👉 Ensuite : source ~/ansible_venv/bin/activate && cd ~/nudger-vm/infra/k8s_ansible"

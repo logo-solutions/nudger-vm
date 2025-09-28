@@ -6,3 +6,6 @@
 - import_playbook: 002-setup-github-app.yml
 - import_playbook: 003-setup-github-app.yml
 - import_playbook: 004-secure-ssh.yml
+- import_playbook: 005-gen-sshkey.yml
+- import_playbook: 006-install-passlib.yml
+- import_playbook: 007-init-vault.yml
