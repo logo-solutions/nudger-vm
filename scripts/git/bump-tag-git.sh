@@ -1,28 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# git-bump-tag.sh — incrémente automatiquement version sémantique
-# Usage: ./git-bump-tag.sh
-
 remote="${REMOTE:-origin}"
-default_remote_url="git@github.com:logo-solutions/nudger-vm.git"
 
-# Sanity: corrige le remote si nécessaire
-if ! git remote get-url "$remote" >/dev/null 2>&1; then
-  echo "⚠️ Remote '$remote' absent, création avec $default_remote_url"
-  git remote add "$remote" "$default_remote_url"
-fi
-
-# Récupère le dernier tag, ou v0.0.0 s'il n'y en a pas
-last_tag=$(git tag --sort=-v:refname | head -n 1)
+# Filtrer uniquement les tags semver vX.Y.Z
+last_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
 [ -z "$last_tag" ] && last_tag="v0.0.0"
+
 version=${last_tag#v}
 IFS='.' read -r major minor patch <<< "$version"
 
-# Récupère le dernier message de commit
+# Dernier message de commit
 last_commit_msg=$(git log -1 --pretty=%B)
 
-# Détermine quel numéro incrémenter
+# Incrémentation selon commit
 if [[ $last_commit_msg =~ BREAKING ]]; then
   major=$((major + 1)); minor=0; patch=0
 elif [[ $last_commit_msg =~ ^feat ]]; then
@@ -33,8 +24,14 @@ fi
 
 new_tag="v${major}.${minor}.${patch}"
 
-# Création et push du tag
+# Vérifier si le tag existe déjà
+if git rev-parse "$new_tag" >/dev/null 2>&1 2>/dev/null || git ls-remote --tags "$remote" | grep -q "refs/tags/$new_tag"; then
+  echo "⚠️ Le tag $new_tag existe déjà → aucun nouveau tag créé."
+  exit 0
+fi
+
+# Création + push
 git tag -a "$new_tag" -m "Release $new_tag"
 git push "$remote" "$new_tag"
 
-echo "✅ Tag $new_tag créé et poussé automatiquement !"
+echo "✅ Nouveau tag semver : $new_tag"
