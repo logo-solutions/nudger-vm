@@ -23,7 +23,7 @@ pip install "ansible-core>=2.16,<2.18" ansible-lint openshift kubernetes pyyaml 
 # Collections indispensables
 ansible-galaxy collection install \
   kubernetes.core ansible.posix community.general community.hashi_vault --force
-
+ansible-galaxy collection install community.crypto --force
 # Depuis requirements.yml
 REQUIREMENTS_FILE="$HOME/nudger-vm/infra/k8s_ansible/requirements.yml"
 if [ -f "$REQUIREMENTS_FILE" ]; then

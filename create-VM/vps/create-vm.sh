@@ -51,6 +51,8 @@ echo "ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP \"chown root:root /etc/github-app/nud
 
 # Post-install
 echo "👉 Connexion: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
-echo "👉 Depuis la VM : git clone git@github.com:loicgo29/nudger-vm.git"
+echo "PAT=<patdepuisbitwarden>"
+echo "👉 Depuis la VM :git clone https://\$PAT@github.com/logo-solutions/nudger-vm.git"
 echo "👉 Puis : ~/nudger-vm/scripts/bastion/install-ansible.sh"
 echo "👉 Ensuite : source ~/ansible_venv/bin/activate && cd ~/nudger-vm/infra/k8s_ansible"
+echo " ansible-playbook -i inventory.ini playbooks/bastion/site.bastion.yml"
