@@ -41,7 +41,7 @@ BASTION_KEY="${BASTION_KEY:-$HOME/.ssh/id_ed25519}"   # <-- ajuste si besoin
 SSH_OPTS="-o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -i $BASTION_KEY"
 
 # 🔎 Attente SSH bastion
-echo "👉 Attente SSH sur $VM_IP…"
+echo "👉 Attente SSH sur $VM_IP"
 for i in {1..30}; do
   if nc -z -w2 "$VM_IP" 22 >/dev/null 2>&1; then
     if ssh $SSH_OPTS root@"$VM_IP" true 2>/dev/null; then
