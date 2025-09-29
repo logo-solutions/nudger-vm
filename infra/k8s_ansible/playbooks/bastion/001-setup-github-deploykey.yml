@@ -1,6 +1,6 @@
 ---
 - name: Générer et configurer une clé SSH GitHub sur la VM
-  hosts: master1
+  hosts: bastion
   become: true
   gather_facts: false
   vars:

@@ -1,6 +1,6 @@
 ---
 - name: Installer passlib pour Ansible
-  hosts: localhost
+  hosts: bastion
   gather_facts: no
   connection: local
 

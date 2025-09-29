@@ -1,6 +1,6 @@
 ---
 - name: Setup GitHub App
-  hosts: master1
+  hosts: bastion
   become: true
   roles:
     - github_app

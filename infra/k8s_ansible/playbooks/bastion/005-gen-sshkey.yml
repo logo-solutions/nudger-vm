@@ -1,6 +1,6 @@
 ---
 - name: Générer une clé SSH ed25519 pour les VMs
-  hosts: localhost
+  hosts: bastion
   connection: local
   gather_facts: false
 

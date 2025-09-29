@@ -1,5 +1,5 @@
 - name: Installer GitHub App token helper
-  hosts: k8s_masters
+  hosts: bastion
   become: yes
   roles:
     - github_app
