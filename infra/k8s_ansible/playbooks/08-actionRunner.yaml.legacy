@@ -1,6 +1,6 @@
 ---
 - name: Apply ARC CRDs (server-side apply)
-  hosts: localhost
+  hosts: k8s_masters
   gather_facts: no
   vars:
     crds_local_path: "/tmp/actions-runner-controller-crds.yaml"  # Chemin sans espace superflu
