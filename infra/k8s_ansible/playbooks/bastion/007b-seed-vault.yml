@@ -3,29 +3,86 @@
   hosts: bastion
   become: true
   vars:
-    vault_init_file: "/root/.ansible/artifacts/bastion/vault-init.json"
     vault_addr: "http://127.0.0.1:8200"
 
+    # <-- IMPORTANT: on utilise inventory_hostname (bastion_host)
+    artifacts_dir_remote: "/root/.ansible/artifacts/{{ inventory_hostname }}"
+    init_json_remote: "{{ artifacts_dir_remote }}/vault-init.json"
+
+    default_users:
+      - { path: "secret/users/kubernetes-admin", data: { password: "changeme123" } }
+      - { path: "secret/users/ops-loic",         data: { password: "changeme123" } }
+      - { path: "secret/users/dev-loic",         data: { password: "changeme123" } }
+
   tasks:
-    - name: Lire le root_token depuis vault-init.json
-      command: jq -r .root_token {{ vault_init_file }}
-      register: vault_token
+    - name: Vérifier présence du vault-init.json (remote)
+      ansible.builtin.stat:
+        path: "{{ init_json_remote }}"
+      register: init_stat
+
+    - name: Lire root_token depuis le fichier si présent
+      ansible.builtin.command: jq -r '.root_token' "{{ init_json_remote }}"
+      register: token_cmd
       changed_when: false
+      failed_when: false
+      when: init_stat.stat.exists
 
-    - name: Exporter variables d’env pour Vault
-      set_fact:
-        vault_env:
-          VAULT_ADDR: "{{ vault_addr }}"
-          VAULT_TOKEN: "{{ vault_token.stdout }}"
+    - name: Construire le VAULT_TOKEN effectif (priorité à la variable d'environnement)
+      ansible.builtin.set_fact:
+        effective_vault_token: >-
+          {{ (lookup('env','VAULT_TOKEN') | default('', true)) |
+             default(token_cmd.stdout | default(''), true) }}
 
-    - name: Créer les secrets utilisateurs dans Vault
-      command: >
-        vault kv put secret/users/{{ item.name }} password={{ item.password | default('changeme123') }}
-      environment: "{{ vault_env }}"
-      loop: "{{ users_k8s }}"
-      register: vault_seed
-      changed_when: "'created' in vault_seed.stdout or 'success' in vault_seed.stdout"
+    - name: Échec si aucun token dispo
+      ansible.builtin.fail:
+        msg: >-
+          Aucun token trouvé. Définis VAULT_TOKEN dans l'environnement OU assure-toi
+          que {{ init_json_remote }} existe et contient .root_token.
+      when: (effective_vault_token | default('')) | length == 0
 
-    - name: Debug - résumés des créations
-      debug:
-        var: vault_seed.results | map(attribute='stdout') | list
+    - name: S'assurer que le moteur KV v2 'secret' est actif (idempotent)
+      ansible.builtin.command: vault secrets enable -path=secret kv-v2
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ effective_vault_token }}"
+      register: kv_enable
+      changed_when: "'success' in (kv_enable.stdout | lower | default(''))"
+      failed_when: >
+        kv_enable.rc != 0 and
+        ('path is already in use' not in (kv_enable.stderr | default(''))) and
+        ('path is already in use' not in (kv_enable.stdout | default('')))
+
+    - block:
+        - name: Écrire les secrets avec la collection community.hashi_vault
+          community.hashi_vault.vault_kv2_write:
+            url: "{{ vault_addr }}"
+            path: "{{ item.path }}"
+            token: "{{ effective_vault_token }}"
+            data: "{{ item.data }}"
+          loop: "{{ default_users }}"
+          register: hv_writes
+
+        - name: Vérifier lecture (module)
+          community.hashi_vault.vault_kv2_read:
+            url: "{{ vault_addr }}"
+            path: "{{ item.path }}"
+            token: "{{ effective_vault_token }}"
+          loop: "{{ default_users }}"
+      rescue:
+        - name: Fallback CLI — Écriture des secrets (si collection absente)
+          ansible.builtin.command: >
+            bash -lc 'vault kv put {{ item.path }}
+            {{ item.data | dict2items | map("join","=") | join(" ") }}'
+          environment:
+            VAULT_ADDR: "{{ vault_addr }}"
+            VAULT_TOKEN: "{{ effective_vault_token }}"
+          loop: "{{ default_users }}"
+
+        - name: Fallback CLI — Vérification lecture
+          ansible.builtin.command: >
+            bash -lc "vault kv get -format=json {{ item.path }} |
+            jq -e '.data.data | length > 0'"
+          environment:
+            VAULT_ADDR: "{{ vault_addr }}"
+            VAULT_TOKEN: "{{ effective_vault_token }}"
+          loop: "{{ default_users }}"
