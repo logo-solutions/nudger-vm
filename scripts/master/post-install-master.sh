@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Activer le venv Ansible de bastion
-if ! command -v jq >/dev/null 2>&1; then
-  echo "🔹 Installation jq (manquant)"
-  apt-get update -y
-  apt-get install -y jq
-fi
 if [ -f ~/ansible_venv/bin/activate ]; then
   source ~/ansible_venv/bin/activate
 else
