@@ -2,27 +2,33 @@
 - name: Derive minor (M.m) from k8s_version (no regex)
   ansible.builtin.set_fact:
     k8s_minor_local: "{{ (k8s_version.split('.')[0:2] | join('.')) if (k8s_version is defined and (k8s_version|length)>0) else '1.31' }}"
+
 - debug:
     msg:
       k8s_version: "{{ k8s_version }}"
       k8s_minor_local: "{{ k8s_minor_local }}"
 
+# ================================
+# Gestion du swap
+# ================================
 - name: Check active swap
   ansible.builtin.command: swapon --noheadings --show=NAME
   register: _swapon
   changed_when: false
   failed_when: false
   tags: [swap]
+
 - name: Disable swap at runtime if any is active
   ansible.builtin.command: swapoff -a
   when: _swapon.stdout | trim | length > 0
   changed_when: true
   tags: [swap]
+
 - name: Comment swap entries in /etc/fstab (keep a backup)
   ansible.builtin.replace:
     path: /etc/fstab
-    regexp: "^\\s*([^#].*\\s+swap\\s+.*)$"
-    replace: "# \\1"
+    regexp: '^\s*([^#].*\s+swap\s+.*)$'
+    replace: '# \1'
     backup: true
   when: disable_swap_comment_fstab | bool
   tags: [swap, fstab]
@@ -47,6 +53,7 @@
   when: disable_swap_create_systemd_unit | bool
   notify: Reload systemd
   tags: [swap, systemd]
+
 - name: Enable + start disable-swap service
   ansible.builtin.systemd:
     name: "{{ disable_swap_unit_name }}"
@@ -54,6 +61,7 @@
     state: started
   when: disable_swap_create_systemd_unit | bool
   tags: [swap, systemd]
+
 - name: Set vm.swappiness sysctl
   ansible.posix.sysctl:
     name: vm.swappiness
@@ -63,21 +71,23 @@
     reload: true
   when: disable_swap_set_sysctl | bool
   tags: [swap, sysctl]
+
 - name: Show final swap status (for logs)
   ansible.builtin.command: swapon --show
   register: _swap_status
   changed_when: false
   failed_when: false
   tags: [swap]
+
 - name: Debug final swap status
   ansible.builtin.debug:
     msg: >-
       Swap actif ? {{ (_swap_status.stdout | trim) != '' }}
   tags: [swap]
-# ----------------------------
+
+# ================================
 # Kubernetes APT repo + packages
-# ----------------------------
-# Derive minor locally from k8s_version (NO regex, ignore polluted globals)
+# ================================
 - name: Derive minor (M.m) from k8s_version (no regex)
   ansible.builtin.set_fact:
     k8s_minor_local: "{{ (k8s_version.split('.')[0:2] | join('.')) if (k8s_version is defined and (k8s_version|length)>0) else '1.31' }}"
@@ -90,8 +100,6 @@
       key_url: "{{ kubernetes_gpg_key_url | default('UNDEF') }}"
       repo: "{{ kubernetes_repo | default('UNDEF') }}"
 
-# Best practice: avoid include_vars with relative paths; keep role-scoped defaults
-# that can be overridden via group_vars/host_vars or -e on CLI.
 - name: Ensure apt keyrings directory exists
   ansible.builtin.file:
     path: /etc/apt/keyrings
@@ -99,7 +107,7 @@
     mode: "0755"
   become: true
   tags: ["k8s", "repo"]
-# Download upstream ASCII armored Release key.
+
 - name: Download Kubernetes Release key (ASCII)
   ansible.builtin.get_url:
     url: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor_local }}/deb/Release.key"
@@ -107,8 +115,7 @@
     mode: "0644"
   become: true
   tags: ["k8s", "repo"]
-# Convert to a binary keyring that apt can use.
-# Idempotence: guarded by creates= on the destination keyring file.
+
 - name: Add Kubernetes APT repository (pkgs.k8s.io)
   ansible.builtin.apt_repository:
     repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor_local }}/deb/ /"
@@ -121,25 +128,25 @@
 - name: Convert Release key to binary keyring
   ansible.builtin.command: >
     gpg --dearmor -o {{ kubernetes_keyring_path }} /tmp/kubernetes-release.asc
-
   args:
     creates: "{{ kubernetes_keyring_path }}"
   become: true
   tags: ["k8s", "repo"]
+
 - name: Remove temporary ASCII key
   ansible.builtin.file:
     path: /tmp/kubernetes-release.asc
     state: absent
   become: true
   tags: ["k8s", "repo"]
-# Clean up legacy list if it exists (older guides used kubernetes.list).
+
 - name: Remove legacy kubernetes.list if present
   ansible.builtin.file:
     path: /etc/apt/sources.list.d/kubernetes.list
     state: absent
   become: true
   tags: ["k8s", "repo"]
-# tasks/main.yml (du rôle kubernetes) — avant apt_repository:
+
 - name: Remove legacy Kubernetes apt sources (old prod-cdn/isv format)
   ansible.builtin.shell: |
     set -euo pipefail
@@ -153,7 +160,7 @@
     executable: /bin/bash
   register: _legacy_k8s_sources
   changed_when: _legacy_k8s_sources.rc == 0
-# Add the per-minor pkgs.k8s.io repository with our keyring.
+
 - name: Add Kubernetes APT repository (pkgs.k8s.io)
   ansible.builtin.apt_repository:
     repo: "deb [signed-by={{ kubernetes_keyring_path }}] https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor_local }}/deb/ /"
@@ -162,7 +169,7 @@
     update_cache: true
   become: true
   tags: ["k8s", "repo"]
-# Keep “common” apt prerequisites near where they are used for clarity.
+
 - name: Install common APT dependencies
   ansible.builtin.apt:
     name: "{{ common_apt_dependencies }}"
@@ -170,17 +177,30 @@
     update_cache: true
   become: true
   tags: ["k8s", "packages"]
-# Install kubelet/kubeadm/kubectl from the pinned minor repo.
-- name: Install Kubernetes packages
-  ansible.builtin.apt:
-    name: "{{ kubernetes_packages }}"
-    state: present
-    update_cache: true
+
+- name: Check held packages
+  ansible.builtin.command: apt-mark showhold
+  register: held_pkgs
+  changed_when: false
+  become: true
+
+- debug:
+    var: held_pkgs.stdout_lines
+
+# ================================
+# INSTALL forcée des binaires K8s
+# ================================
+- name: Build flat string of Kubernetes packages
+  ansible.builtin.set_fact:
+    kubernetes_packages_str: "{{ kubernetes_packages | join(' ') }}"
+
+- name: Force install Kubernetes packages (bypass held)
+  ansible.builtin.shell: |
+    apt-get install -y --allow-change-held-packages {{ kubernetes_packages_str }}
   become: true
   notify: Restart kubelet
   tags: ["k8s", "packages"]
-# Holding versions is important: kubeadm/kubelet/kubectl must match.
-# This avoids inadvertent upgrades when the repo moves forward.
+
 - name: Build package name list (strip =version)
   ansible.builtin.set_fact:
     kubernetes_package_names: "{{ kubernetes_packages | map('split', '=') | map('first') | list }}"
@@ -191,7 +211,7 @@
     selection: hold
   loop: "{{ kubernetes_package_names }}"
   become: true
-# Ensure kubelet is enabled/running (kubeadm will further configure it later).
+  tags: ["k8s", "packages"]
 - name: Ensure kubelet service is enabled and running
   ansible.builtin.service:
     name: kubelet

@@ -2,9 +2,7 @@
 # ----------------------------
 # Kubernetes repo & packages (FORCE v1.31)
 # ----------------------------
-- name: Derive minor (M.m) from k8s_version (no regex)
-  ansible.builtin.set_fact:
-    k8s_minor_local: "{{ (k8s_version.split('.')[0:2] | join('.')) if (k8s_version is defined and (k8s_version|length)>0) else '1.31' }}"
+
 - name: Ensure deps for HTTPS APT
   ansible.builtin.apt:
     name:
@@ -14,136 +12,79 @@
     state: present
     update_cache: true
   become: true
-  tags: [k8s]
-- name: Purge any previous Kubernetes sources
-  ansible.builtin.shell: |
-    rm -f /etc/apt/sources.list.d/kubernetes.list
-    sed -i '/pkgs\\.k8s\\.io\\/core:\\/stable:\\//d' /etc/apt/sources.list || true
-  args: { executable: /bin/bash }
-  changed_when: true
-  become: true
-  tags: [k8s]
-- name: Remove legacy keyring if present
-  ansible.builtin.file:
-    path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    state: absent
-  become: true
-  tags: [k8s]
+
 - name: Ensure /etc/apt/keyrings exists
   ansible.builtin.file:
     path: /etc/apt/keyrings
     state: directory
     mode: "0755"
   become: true
-  tags: [k8s]
-- name: Fetch Kubernetes Release.key (minor {{ k8s_minor_local }})
+
+- name: Fetch Kubernetes Release.key (minor {{ k8s_version.split('.')[0:2] | join('.') }})
   ansible.builtin.get_url:
-    url: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor_local }}/deb/Release.key"
+    url: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_version.split('.')[0:2] | join('.') }}/deb/Release.key"
     dest: /etc/apt/keyrings/kubernetes-Release.key
     mode: "0644"
   become: true
+
 - name: Dearmor -> kubernetes-archive-keyring.gpg
   ansible.builtin.command:
     cmd: "gpg --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg /etc/apt/keyrings/kubernetes-Release.key"
   args:
     creates: /etc/apt/keyrings/kubernetes-archive-keyring.gpg
   become: true
-  tags: [k8s]
-- name: Ensure keyring perms
-  ansible.builtin.file:
-    path: /etc/apt/keyrings/kubernetes-archive-keyring.gpg
-    state: file
-    mode: "0644"
-  become: true
-  tags: [k8s]
-- name: Write kubernetes.list (pin to {{ k8s_minor }})
+
+- name: Write kubernetes.list
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/kubernetes.list
     mode: "0644"
     content: |
-      deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor_local }}/deb/ /
+      deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_version.split('.')[0:2] | join('.') }}/deb/ /
   become: true
-  tags: [k8s]
-# 1) Refresh APT propre (pas de rm -rf)
-- name: Refresh apt cache (force)
+
+- name: Refresh apt cache
   ansible.builtin.apt:
     update_cache: true
     cache_valid_time: 0
   become: true
-  tags: [k8s]
 
-# 2) Unhold (idempotent + pipefail) avant install
-- name: Unhold kube packages if held
+# ----------------------------
+# Paquets Kubernetes
+# ----------------------------
+
+- name: Unhold kube packages
   ansible.builtin.shell: |
-    set -euo pipefail
-    any=0
     for p in kubeadm kubelet kubectl; do
-      if apt-mark showhold | grep -qx "$p"; then
-        apt-mark unhold "$p"
-        any=1
-      fi
+      apt-mark unhold "$p" || true
     done
-    exit $any
   args: { executable: /bin/bash }
-  register: kube_unhold
-  changed_when: kube_unhold.rc == 1
-  failed_when: kube_unhold.rc not in [0,1]
   become: true
-  tags: [k8s]
-
-# 3) Construit la liste "pkg=version" si k8s_version est fourni
-# 3) Construit la liste "pkg=version" si k8s_version est fourni
-- name: Build pinned kube packages list (if k8s_version is set)
-  ansible.builtin.set_fact:
-    kubernetes_packages:
-      - "kubeadm={{ k8s_version }}"
-      - "kubelet={{ k8s_version }}"
-      - "kubectl={{ k8s_version }}"
-  when: k8s_version is defined and (k8s_version | length) > 0
-
-# 4) DEBUG avant install
-- debug:
-    msg:
-      k8s_version: "{{ k8s_version }}"
-      k8s_minor_local: "{{ k8s_minor_local }}"
-      key_url: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor_local }}/deb/Release.key"
-  tags: [k8s,debug]
-
-- name: DEBUG packages avant install
-  ansible.builtin.debug:
-    var: kubernetes_packages
-  tags: [k8s, debug]
-
-# 4.b) Assert propre (fail_msg DOIT être SOUS le module)
-- name: Assert kubernetes_packages looks sane
-  ansible.builtin.assert:
-    that:
-      - kubernetes_packages is defined
-      - kubernetes_packages | length == 3
-      - (kubernetes_packages
-         | select('match', '^(kubeadm|kubelet|kubectl)=\\d+\\.\\d+\\.\\d+(-\\d+\\.\\d+)?$')
-         | list | length) == 3
-    fail_msg: "kubernetes_packages non construit comme attendu."
-
-# 5) Install — utilise UNE SEULE variable
-- name: Install Kubernetes tools
-  ansible.builtin.apt:
-    name: "{{ kubernetes_packages }}"
-    state: present
-    update_cache: true
-  register: kube_tools
-  become: true
-  tags: [k8s]
-# 5) Re-hold après install (évite upgrades accidentels)
-- name: Hold kube packages
-  ansible.builtin.shell: |
-    set -euo pipefail
-    apt-mark hold kubeadm kubelet kubectl
-  args: { executable: /bin/bash }
-  when: kube_tools.changed or kube_unhold.changed
+- name: Check held packages
+  ansible.builtin.command: apt-mark showhold
+  register: held_pkgs
   changed_when: false
   become: true
-  tags: [k8s]
+
+- debug:
+    var: held_pkgs.stdout_lines
+
+- name: Install Kubernetes tools (force upgrade, bypass hold)
+  ansible.builtin.command: >
+    apt-get install -y --allow-change-held-packages
+    kubeadm={{ k8s_version }}
+    kubelet={{ k8s_version }}
+    kubectl={{ k8s_version }}
+  become: true
+
+- name: Hold kube packages again
+  ansible.builtin.command: apt-mark hold kubeadm kubelet kubectl
+  become: true
+
+- name: Hold kube packages again
+  ansible.builtin.shell: |
+    apt-mark hold kubeadm kubelet kubectl
+  args: { executable: /bin/bash }
+  become: true
 
 - name: Enable & restart kubelet
   ansible.builtin.systemd:
@@ -151,4 +92,3 @@
     enabled: true
     state: restarted
   become: true
-  tags: [k8s]

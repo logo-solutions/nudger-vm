@@ -1,6 +1,6 @@
 ---
 - name: Bootstrap DevOps on all hosts
-  hosts: all
+  hosts: k8s_masters
   become: true
   vars:
     # Let Ansible auto-detect /usr/bin/python3 on target; no fragile venv here.
