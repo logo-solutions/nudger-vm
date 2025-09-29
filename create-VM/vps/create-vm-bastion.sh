@@ -47,22 +47,20 @@ export bastion=$VM_IP
 echo "✅ SSH up"
 
 # --- Mise à jour inventaire ---
-echo "👉 Mise à jour de $INVENTORY"
-tmpfile=$(mktemp)
-
-# On conserve tout sauf anciennes entrées bastion et master
-awk '!/bastion_host/ && !/^\[bastion\]$/ && !/master1/ && !/^\[master\]$/ {print}' "$INVENTORY" > "$tmpfile" || true
-
-cat >> "$tmpfile" <<EOF
-
+# --- Fallback: synthesize inventory.ini if missing ---
+if [[ ! -f "inventory.ini" ]]; then
+  echo "⚠️ inventory.ini absent — création minimale (bastion en local)"
+  cat > inventory.ini <<'EOF'
 [bastion]
-$HOSTNAME ansible_host=$VM_IP ansible_user=$USER ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+bastion_host ansible_host=127.0.0.1 ansible_connection=local ansible_user=root ansible_python_interpreter=/usr/bin/python3
 
-[master]
-master1 ansible_host=$VM_IP ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ansible_vm
+[k8s_masters]
+
+[master:children]
+k8s_masters
 EOF
+fi
 
-mv "$tmpfile" "$INVENTORY"
 echo "✅ Inventaire mis à jour"
 
 # Instructions post-install
