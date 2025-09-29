@@ -3,7 +3,8 @@ set -euo pipefail
 
 echo "👉 Chargement du profil bash"
 source ~/nudger-vm/config-vm/profile_logo.sh
-
+echo "👉 génération clé de déploiement"
+ssh-keygen -t ed25519 -f /root/.ssh/id_ansible_vm -C "ansible@bastion"
 echo "👉 Installation Ansible"
 ~/nudger-vm/scripts/bastion/install-ansible-bastion.sh
 

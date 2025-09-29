@@ -50,13 +50,16 @@ echo "✅ SSH up"
 echo "👉 Mise à jour de $INVENTORY"
 tmpfile=$(mktemp)
 
-# On conserve tout sauf anciennes entrées du bastion
-awk '!/bastion_host/ && !/^\[bastion\]$/ {print}' "$INVENTORY" > "$tmpfile" || true
+# On conserve tout sauf anciennes entrées bastion et master
+awk '!/bastion_host/ && !/^\[bastion\]$/ && !/master1/ && !/^\[master\]$/ {print}' "$INVENTORY" > "$tmpfile" || true
 
 cat >> "$tmpfile" <<EOF
 
 [bastion]
 $HOSTNAME ansible_host=$VM_IP ansible_user=$USER ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+
+[master]
+master1 ansible_host=$VM_IP ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ansible_vm
 EOF
 
 mv "$tmpfile" "$INVENTORY"
