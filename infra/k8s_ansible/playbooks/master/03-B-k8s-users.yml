@@ -1,6 +1,6 @@
 ---
 - name: Setup Kubernetes users and dev environment
-  hosts: k8s_masters
+  hosts: master
   become: true
   vars:
     ansible_python_interpreter: auto_silent
