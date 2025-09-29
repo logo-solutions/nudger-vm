@@ -30,6 +30,12 @@ kv_put() {
 }
 
 ### -------- Préchecks --------
+# Vérifie et installe jq si absent
+if ! command -v jq >/dev/null 2>&1; then
+  echo "🔹 Installation jq (manquant)"
+  apt-get update -y
+  apt-get install -y jq
+fi
 require_cmd jq
 require_cmd ssh-keygen
 require_cmd git
