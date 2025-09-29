@@ -1,6 +1,6 @@
 ---
 - name: Préparation Kubernetes
-  hosts: master
+  hosts: k8s_masters
   gather_facts: true
 
   pre_tasks:
