@@ -5,7 +5,7 @@ echo "👉 Chargement du profil bash"
 source ~/nudger-vm/config-vm/profile_logo.sh
 
 echo "👉 Installation Ansible"
-~/nudger-vm/scripts/bastion/install-ansible.sh
+~/nudger-vm/scripts/bastion/install-ansible-bastion.sh
 
 echo "👉 Activation venv + lancement des playbooks"
 source ~/ansible_venv/bin/activate

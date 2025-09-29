@@ -74,3 +74,6 @@ if ! command -v lazygit &> /dev/null; then
 fi
 
 echo "✅ Installation terminée !"
+echo "source ~/ansible_venv/bin/activate"
+echo "cd ~/nudger-vm/infra/k8s_ansible"
+echo "ansible-playbook -i inventory.ini playbooks/nudger.yml"

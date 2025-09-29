@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./post-install-host.sh <VM_IP> [USER] [ID_SSH] [KEY_PATH]
-# Exemple: ./post-install-host.sh 91.98.16.184 root id_vm_ed25519 ~/Downloads/nudger-vm-003.2025-09-27.private-key.pem
+# Emplacement de l'inventory Ansible (même que dans create-vm-bastion.sh)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIRHOME="$(cd "$SCRIPT_DIR/../.." && pwd)"
+INVENTORY="$DIRHOME/infra/k8s_ansible/inventory.ini"
 
-VM_IP="${1:?IP de la VM manquant (ex: 91.98.16.184)}"
-USER="${2:-root}"
-ID_SSH="${3:-id_vm_ed25519}"
-KEY_PATH="${4:-$HOME/Downloads/nudger-vm-003.2025-09-27.private-key.pem}"
+# Récupère l'IP du bastion dans l'inventory
+VM_IP="$(awk '/\[bastion\]/ {getline; print $2}' "$INVENTORY" | cut -d= -f2)"
+USER="$(awk '/\[bastion\]/ {getline; for(i=1;i<=NF;i++){ if($i ~ /^ansible_user=/){split($i,a,"="); print a[2]}}}' "$INVENTORY")"
+
+# Paramètres SSH
+ID_SSH="${1:-id_vm_ed25519}"
+KEY_PATH="${2:-$HOME/Downloads/nudger-vm-003.2025-09-27.private-key.pem}"
+
+if [[ -z "$VM_IP" ]]; then
+  echo "❌ Impossible de trouver l'IP du bastion dans $INVENTORY"
+  exit 1
+fi
 
 echo "👉 Préparation côté hôte pour $USER@$VM_IP"
 
