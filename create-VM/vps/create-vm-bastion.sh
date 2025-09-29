@@ -36,21 +36,36 @@ OUTPUT="$(hcloud server create \
 VM_IP="$(echo "$OUTPUT" | awk '/IPv4:/ {print $2}')"
 echo "✅ VM $NAME IP: $VM_IP"
 
-# Attente SSH
+BASTION_KEY="${BASTION_KEY:-$HOME/.ssh/id_ed25519}"   # <-- ajuste si besoin
+
+SSH_OPTS="-o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -i $BASTION_KEY"
+
+# 🔎 Attente SSH bastion
+echo "👉 Attente SSH sur $VM_IP…"
 for i in {1..30}; do
-  if nc -z -w2 "$VM_IP" 22; then break; fi
+  if nc -z -w2 "$VM_IP" 22 >/dev/null 2>&1; then
+    if ssh $SSH_OPTS root@"$VM_IP" true 2>/dev/null; then
+      echo "✅ SSH up"
+      break
+    fi
+  fi
   sleep 2
-done || { echo "❌ Timeout SSH"; exit 1; }
+  if [ "$i" -eq 30 ]; then echo "❌ Timeout SSH"; exit 1; fi
+done
 
-ssh-keygen -R "$VM_IP" >/dev/null 2>&1 || true
-export bastion=$VM_IP
-echo "✅ SSH up"
+# 📦 Chemin distant de l'inventaire SUR LE BASTION
+REMOTE_INV="/root/nudger-vm/infra/k8s_ansible/inventory.ini"
 
-# --- Mise à jour inventaire ---
-# --- Fallback: synthesize inventory.ini if missing ---
-if [[ ! -f "inventory.ini" ]]; then
-  echo "⚠️ inventory.ini absent — création minimale (bastion en local)"
-  cat > inventory.ini <<'EOF'
+echo "👉 Mise à jour de l’inventaire sur le bastion: $REMOTE_INV"
+ssh $SSH_OPTS root@"$VM_IP" bash -s <<'EOSSH'
+set -euo pipefail
+mkdir -p /root/nudger-vm/infra/k8s_ansible
+# Si un template existe et que tu veux l'utiliser, tu peux faire:
+# test -f /root/nudger-vm/infra/k8s_ansible/inventory.ini.j2 && \
+#   envsubst < /root/nudger-vm/infra/k8s_ansible/inventory.ini.j2 > /root/nudger-vm/infra/k8s_ansible/inventory.ini
+
+# Inventaire minimal idempotent pour exécuter les playbooks bastion depuis le bastion
+cat > /root/nudger-vm/infra/k8s_ansible/inventory.ini <<'EOF'
 [bastion]
 bastion_host ansible_host=127.0.0.1 ansible_connection=local ansible_user=root ansible_python_interpreter=/usr/bin/python3
 
@@ -59,10 +74,12 @@ bastion_host ansible_host=127.0.0.1 ansible_connection=local ansible_user=root a
 [master:children]
 k8s_masters
 EOF
-fi
+chmod 640 /root/nudger-vm/infra/k8s_ansible/inventory.ini
+EOSSH
 
-echo "✅ Inventaire mis à jour"
+echo "✅ Inventaire mis à jour sur le bastion"
 
-# Instructions post-install
-echo "👉 Test SSH: ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
-echo "👉 Test Ansible: ansible -i $INVENTORY $HOSTNAME -m ping"
+echo "👉 Rappels utiles (à lancer SUR le bastion) :"
+echo "   source ~/ansible_venv/bin/activate"
+echo "   cd ~/nudger-vm/infra/k8s_ansible"
+echo "   ansible -i inventory.ini bastion_host -m ping"
