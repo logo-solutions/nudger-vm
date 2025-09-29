@@ -2,23 +2,31 @@
 - name: Seed Vault avec les utilisateurs (mots de passe par défaut)
   hosts: bastion
   become: true
+  collections:
+    - community.hashi_vault
   vars:
     vault_addr: "http://127.0.0.1:8200"
-
-    # <-- IMPORTANT: on utilise inventory_hostname (bastion_host)
     artifacts_dir_remote: "/root/.ansible/artifacts/{{ inventory_hostname }}"
     init_json_remote: "{{ artifacts_dir_remote }}/vault-init.json"
-
     default_users:
       - { path: "secret/users/kubernetes-admin", data: { password: "changeme123" } }
       - { path: "secret/users/ops-loic",         data: { password: "changeme123" } }
       - { path: "secret/users/dev-loic",         data: { password: "changeme123" } }
 
+  # … (écriture avec vault_kv2_write ou fallback CLI)
+
   tasks:
-    - name: Vérifier présence du vault-init.json (remote)
-      ansible.builtin.stat:
-        path: "{{ init_json_remote }}"
-      register: init_stat
+    # Exemple de lecture (remplace 'vault_kv2_read' par 'vault_kv2_get')
+    - name: Vérifier lecture (module)
+    # si tu as mis collections: plus haut, tu peux utiliser le short name :
+      vault_kv2_get:
+        url: "{{ vault_addr }}"
+        path: "{{ item.path }}"        # ex: secret/users/dev-loic
+        token: "{{ lookup('env','VAULT_TOKEN') }}"
+        # si ton moteur KV n'est PAS monté sur 'secret', précise-le :
+        # engine_mount_point: "mon_kv2"
+      loop: "{{ default_users }}"
+      register: kv_reads
 
     - name: Lire root_token depuis le fichier si présent
       ansible.builtin.command: jq -r '.root_token' "{{ init_json_remote }}"
