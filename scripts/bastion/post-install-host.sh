@@ -36,4 +36,3 @@ ssh -i ~/.ssh/${ID_SSH} "$USER@$VM_IP" \
 echo "✅ Clé GitHub App déployée."
 echo
 echo "👉 Connecte-toi ensuite : ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
-echo "Puis lance : ~/nudger-vm/scripts/post-install-vm.sh"
