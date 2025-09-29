@@ -5,6 +5,12 @@
   collections:
     - community.hashi_vault
 
+  pre_tasks:
+    - name: Ensure hvac is available (venv ou système)
+      ansible.builtin.pip:
+        name: hvac
+        state: present
+        executable: "{{ (ansible_python_interpreter | default('/usr/bin/python3')) | dirname }}/pip"
   vars:
     vault_addr: "http://127.0.0.1:8200"
 
