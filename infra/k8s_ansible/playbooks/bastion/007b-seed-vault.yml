@@ -4,29 +4,25 @@
   become: true
   collections:
     - community.hashi_vault
+
   vars:
     vault_addr: "http://127.0.0.1:8200"
+
+    # Artefact généré par 007a (utilise inventory_hostname => "bastion_host")
     artifacts_dir_remote: "/root/.ansible/artifacts/{{ inventory_hostname }}"
     init_json_remote: "{{ artifacts_dir_remote }}/vault-init.json"
+
+    # Secrets à créer
     default_users:
       - { path: "secret/users/kubernetes-admin", data: { password: "changeme123" } }
       - { path: "secret/users/ops-loic",         data: { password: "changeme123" } }
       - { path: "secret/users/dev-loic",         data: { password: "changeme123" } }
 
-  # … (écriture avec vault_kv2_write ou fallback CLI)
-
   tasks:
-    # Exemple de lecture (remplace 'vault_kv2_read' par 'vault_kv2_get')
-    - name: Vérifier lecture (module)
-    # si tu as mis collections: plus haut, tu peux utiliser le short name :
-      vault_kv2_get:
-        url: "{{ vault_addr }}"
-        path: "{{ item.path }}"        # ex: secret/users/dev-loic
-        token: "{{ lookup('env','VAULT_TOKEN') }}"
-        # si ton moteur KV n'est PAS monté sur 'secret', précise-le :
-        # engine_mount_point: "mon_kv2"
-      loop: "{{ default_users }}"
-      register: kv_reads
+    - name: Vérifier présence du vault-init.json (remote)
+      ansible.builtin.stat:
+        path: "{{ init_json_remote }}"
+      register: init_stat
 
     - name: Lire root_token depuis le fichier si présent
       ansible.builtin.command: jq -r '.root_token' "{{ init_json_remote }}"
@@ -44,11 +40,11 @@
     - name: Échec si aucun token dispo
       ansible.builtin.fail:
         msg: >-
-          Aucun token trouvé. Définis VAULT_TOKEN dans l'environnement OU assure-toi
-          que {{ init_json_remote }} existe et contient .root_token.
+          Aucun token trouvé. Définis VAULT_TOKEN (ex: -e VAULT_TOKEN=$VAULT_TOKEN)
+          OU assure-toi que {{ init_json_remote }} existe et contient .root_token.
       when: (effective_vault_token | default('')) | length == 0
 
-    - name: S'assurer que le moteur KV v2 'secret' est actif (idempotent)
+    - name: S'assurer que KV v2 'secret' est actif (idempotent)
       ansible.builtin.command: vault secrets enable -path=secret kv-v2
       environment:
         VAULT_ADDR: "{{ vault_addr }}"
@@ -61,23 +57,24 @@
         ('path is already in use' not in (kv_enable.stdout | default('')))
 
     - block:
-        - name: Écrire les secrets avec la collection community.hashi_vault
-          community.hashi_vault.vault_kv2_write:
+        - name: Écrire les secrets (module)
+          vault_kv2_write:
             url: "{{ vault_addr }}"
-            path: "{{ item.path }}"
+            engine_mount_point: "secret"
+            path: "{{ item.path | regex_replace('^secret/', '') }}"
             token: "{{ effective_vault_token }}"
             data: "{{ item.data }}"
           loop: "{{ default_users }}"
-          register: hv_writes
 
-        - name: Vérifier lecture (module)
-          community.hashi_vault.vault_kv2_read:
+        - name: Vérifier la lecture (module)
+          vault_kv2_get:
             url: "{{ vault_addr }}"
-            path: "{{ item.path }}"
+            engine_mount_point: "secret"
+            path: "{{ item.path | regex_replace('^secret/', '') }}"
             token: "{{ effective_vault_token }}"
           loop: "{{ default_users }}"
       rescue:
-        - name: Fallback CLI — Écriture des secrets (si collection absente)
+        - name: Fallback CLI — Écriture des secrets
           ansible.builtin.command: >
             bash -lc 'vault kv put {{ item.path }}
             {{ item.data | dict2items | map("join","=") | join(" ") }}'
