@@ -1,3 +1,5 @@
+# INSTALL VM BASTION
+
 ```bash
 cd ~/nudger-vm/
 ./create-VM/vps/create-vm-bastion.sh
@@ -19,8 +21,6 @@ Connection to 65.109.12.160 port 22 [tcp/ssh] succeeded!
 👉 Test SSH: ssh -i ~/.ssh/id_vm_ed25519 root@65.109.12.160
 👉 Test Ansible: ansible -i /Users/loicgourmelon/logo-projects/nudger-vm/infra/k8s_ansible/inventory.ini bastion_host -m ping
 ```
-
-
 
 ```bash
  ./scripts/bastion/post-install-host.sh
@@ -47,7 +47,12 @@ GITHUB_TOKEN=
 ```bash
 git clone https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-vm
 ~/nudger-vm/scripts/bastion/post-install-vm-bastion.sh
-``
+```
 
+# INSTALL VM MASTER
+export HCLOUD_TOKEN= (a recuperer depuis bitwarden)
+```bash
+./create-VM/vps/create-vm-master.sh -t "$HCLOUD_TOKEN" --ssh-key-id 102768386
+```
 
 
