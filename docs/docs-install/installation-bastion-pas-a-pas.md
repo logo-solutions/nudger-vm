@@ -53,6 +53,5 @@ git clone https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-vm
 export HCLOUD_TOKEN= (a recuperer depuis bitwarden)
 ```bash
 ./create-VM/vps/create-vm-master.sh -t "$HCLOUD_TOKEN" --ssh-key-id 102768386
+./scripts/master/post-install-master.sh
 ```
-
-
