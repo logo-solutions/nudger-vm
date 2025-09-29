@@ -10,13 +10,25 @@
 - name: Debug root_token récupéré
   hosts: bastion
   become: true
+  vars:
+    vault_artifacts_dir_remote: "/root/.ansible/artifacts/{{ inventory_hostname }}"
+    vault_init_json_remote: "{{ vault_artifacts_dir_remote }}/vault-init.json"
   tasks:
-    - name: Lire le root_token depuis vault-init.json (si généré)
-      command: jq -r .root_token /root/.ansible/artifacts/bastion/vault-init.json
+    - name: Vérifier présence du vault-init.json (remote)
+      ansible.builtin.stat:
+        path: "{{ vault_init_json_remote }}"
+      register: vault_init_stat
+
+    - name: Lire root_token uniquement si le fichier existe
+      ansible.builtin.command: jq -r '.root_token' "{{ vault_init_json_remote }}"
       register: vault_token
       changed_when: false
-      failed_when: vault_token.rc != 0
+      failed_when: false
+      when: vault_init_stat.stat.exists
 
-    - name: Debug - afficher root_token tronqué
-      debug:
-        msg: "Root token = {{ vault_token.stdout | regex_replace('(.{6}).*', '\\1...') }}"
+    - name: Debug - afficher root_token tronqué (si trouvé)
+      ansible.builtin.debug:
+        msg: "Root token = {{ vault_token.stdout | default('') | regex_replace('(.{6}).*', '\\1...') }}"
+      when:
+        - vault_init_stat.stat.exists
+        - (vault_token.stdout | default('')) | length > 0
