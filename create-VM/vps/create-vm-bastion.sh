@@ -152,54 +152,57 @@ ssh-keygen -R "$IP" >/dev/null 2>&1 || true
 ssh-keyscan -H "$IP" >> ~/.ssh/known_hosts 2>/dev/null || true
 
 # Inventaire : [bastion] toujours en SSH
+# Inventaire Ansible : normaliser la section [bastion] en mode SSH depuis le host
 log "Mise à jour inventaire: $INV_FILE"
+
+# Assurer l'existence du fichier
 mkdir -p "$(dirname "$INV_FILE")"
-# --- Variables attendues ---
-# IP="$IP"               # ex: "157.180.42.146"
-# KEY_PATH="$KEY_PATH"   # ex: "$HOME/.ssh/hetzner-bastion"
-# INV_FILE="$REPO_ROOT/infra/k8s_ansible/inventory.ini"
+touch "$INV_FILE"
 
-if [[ -f "$INV_FILE" ]]; then
-  # 1) Supprimer toute ancienne ligne "bastion ..." (portabilité macOS/Linux)
-  sed -i'' -e '/^bastion[[:space:]]/d' "$INV_FILE" 2>/dev/null || sed -i '/^bastion[[:space:]]/d' "$INV_FILE"
-
-  # 2) S'assurer que la section [bastion] existe (ajout en fin si absente)
-  if ! grep -q '^\[bastion\]$' "$INV_FILE"; then
-    # Ajouter un saut de ligne si le fichier ne se termine pas par \n
-    tail -c1 "$INV_FILE" | read -r _ || echo >> "$INV_FILE"
-    printf "[bastion]\n" >> "$INV_FILE"
-  fi
-
-  # 3) Réécrire une seule ligne plate dans la section [bastion]
-  awk -v ip="$IP" -v key="$KEY_PATH" '
-    BEGIN{printed=0}
-    /^\[bastion\]$/{
-      print;                         # [bastion]
-      print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3";
-      printed=1;
-      # sauter d’anciennes lignes "bastion " éventuellement présentes juste après
-      next
-    }
-    # On ignore d’éventuelles anciennes lignes "bastion " ailleurs (déjà supprimées par sed normalement)
-    /^bastion[[:space:]]/ { next }
-    { print }
-    END{
-      if(!printed){
-        print "[bastion]"
-        print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
-      }
-    }
-  ' "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
-
-else
-  # Fichier inexistant → création minimaliste correcte
-  cat > "$INV_FILE" <<EOF
-[bastion]
-bastion ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3
-EOF
+# 1) S’assurer que l’en-tête [bastion] existe (sinon on l’ajoute en fin)
+if ! grep -q '^\[bastion\]' "$INV_FILE"; then
+  printf "\n[bastion]\n" >> "$INV_FILE"
 fi
-ok "Inventaire mis à jour"
 
+# 2) Purger ce qui est incorrect sous [bastion]
+#    - supprimer les lignes 'bastion ' et 'bastion_host '
+#    - virer toute occurrence de 'ansible_connection=local' si jamais présente
+TMP1="$(mktemp)"; TMP2="$(mktemp)"
+awk '
+  BEGIN{inb=0}
+  /^\[bastion\]$/ {print; inb=1; next}
+  /^\[.*\]$/      {print; inb=0; next}
+  {
+    if(inb){
+      # skip anciennes entrées
+      if ($1=="bastion" || $1=="bastion_host") next
+      # sinon, réimprimer la ligne en supprimant ansible_connection=local si elle traîne
+      gsub(/[[:space:]]*ansible_connection=local/, "", $0)
+    }
+    print
+  }
+' "$INV_FILE" > "$TMP1"
+
+# 3) Insérer l’unique entrée bastion propre juste après l’en-tête
+#    Format souhaité : bastion ansible_host=<IP> ansible_user=root ansible_ssh_private_key_file=<KEY> ansible_python_interpreter=/usr/bin/python3
+awk -v ip="$IP" -v key="$KEY_PATH" '
+  BEGIN{inb=0; injected=0}
+  /^\[bastion\]$/ {
+    print
+    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
+    inb=1; injected=1; next
+  }
+  { print }
+  END{
+    if(!injected){
+      print "[bastion]"
+      print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
+    }
+  }
+' "$TMP1" > "$TMP2" && mv "$TMP2" "$INV_FILE"
+rm -f "$TMP1"
+
+ok "Inventaire local mis à jour"
 # SSH test
 wait_ssh "$IP" "$KEY_PATH"
 log "Test SSH : ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i $KEY_PATH root@$IP true"
