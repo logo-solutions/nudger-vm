@@ -9,19 +9,18 @@ LOCATION="${LOCATION:-hel1}"
 IMAGE="${IMAGE:-ubuntu-22.04}"
 CONTEXT="${CONTEXT:-nudger}"
 
-# Clé SSH locale et côté Hetzner
-SSH_KEY_ID="${SSH_KEY_ID:-}"                   # ex: export SSH_KEY_ID=102804032
-KEY_NAME="${KEY_NAME:-hetzner-bastion}"        # nom de la clé chez Hetzner
-KEY_PATH="${KEY_PATH:-$HOME/.ssh/hetzner-bastion}"
+# Clé SSH Durable
+SSH_KEY_ID="${SSH_KEY_ID:-}"                   # si tu veux forcer l'ID
+KEY_NAME="${KEY_NAME:-hetzner-bastion}"        # nom côté Hetzner (durable)
+KEY_PATH="${KEY_PATH:-/root/.ssh/hetzner-bastion}"
 KEY_PUB="${KEY_PUB:-${KEY_PATH}.pub}"
 
-# Cloud-init (modif vs master): on part d’un template et on le rend
+# Cloud-init (template → rendu)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CI_TMPL="${CI_TMPL:-$REPO_ROOT/create-VM/vps/cloud-init-template.yaml}"
 CI_REND="${CI_REND:-$REPO_ROOT/create-VM/vps/cloud-init.yaml}"
 
-# Inventaire local (mêmes principes que master)
 INV_FILE="$REPO_ROOT/infra/k8s_ansible/inventory.ini"
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -29,16 +28,12 @@ log(){ printf "\n\033[1;36m👉 %s\033[0m\n" "$*"; }
 ok(){  printf "\033[1;32m✅ %s\033[0m\n" "$*"; }
 err(){ printf "\033[1;31m❌ %s\033[0m\n" "$*" >&2; }
 trap 'err "Échec à la ligne $LINENO (cmd: ${BASH_COMMAND:-?})"' ERR
-
 need(){ command -v "$1" >/dev/null 2>&1 || { err "Commande requise introuvable: $1"; exit 1; }; }
-confirm(){ read -r -p "${1:-Confirmer ?} [y/N] " a; case "$a" in y|Y|yes|YES) return 0;; *) return 1;; esac; }
-
 finger_md5(){ ssh-keygen -lf "$1" -E md5 | awk '{print $2}' | sed 's/^MD5://'; }
 
 wait_ssh(){
   local ip="$1" key="$2" tries=40
   log "Attente SSH disponible sur $ip (ssh -i $key)…"
-  # éviter warning host key changed sur recréations successives
   ssh-keygen -R "$ip" >/dev/null 2>&1 || true
   for i in $(seq 1 $tries); do
     if ssh -o BatchMode=yes -o ConnectTimeout=4 \
@@ -61,8 +56,8 @@ Usage: $(basename "$0") [options]
   --type TYPE             Type (def: $TYPE)
   --location LOC          Localisation (def: $LOCATION)
   --image IMAGE           Image (def: $IMAGE)
-  --ssh-key-id ID         ID clé Hetzner (sinon auto-ensure via KEY_NAME+KEY_PATH)
-  --key-name NAME         Nom clé Hetzner à créer/assurer (def: $KEY_NAME)
+  --ssh-key-id ID         ID clé Hetzner (sinon auto-ensure via KEY_NAME+KEY_PATH(.pub))
+  --key-name NAME         Nom clé Hetzner à assurer (def: $KEY_NAME)
   --key-path PATH         Chemin clé privée locale (def: $KEY_PATH)
   --ci-template FILE      Template cloud-init (def: $CI_TMPL)
   --ci-render FILE        Fichier cloud-init rendu (def: $CI_REND)
@@ -105,14 +100,14 @@ if ! hcloud context active >/dev/null 2>&1; then
 fi
 ok "Contexte actif: $(hcloud context active || echo 'n/a')"
 
-# Assurer la clé Hetzner alignée avec la pub locale si SSH_KEY_ID absent
+# Assurer la clé côté Hetzner (si ID non fourni)
 if [[ -z "$SSH_KEY_ID" ]]; then
   log "Assurance clé Hetzner depuis la pub locale ($KEY_PUB)"
   LOCAL_MD5="$(finger_md5 "$KEY_PUB")"
   if hcloud ssh-key describe "$KEY_NAME" -o json >/dev/null 2>&1; then
     HC_MD5="$(hcloud ssh-key describe "$KEY_NAME" -o json | jq -r .fingerprint)"
     if [[ "$HC_MD5" != "$LOCAL_MD5" ]]; then
-      log "Clé '$KEY_NAME' existe mais ne matche pas (hc:$HC_MD5 != local:$LOCAL_MD5) → création d’un nouveau nom unique"
+      log "Clé '$KEY_NAME' existe mais fingerprint différent → nouveau nom unique"
       KEY_NAME="${KEY_NAME}-$(date +%s)"
       hcloud ssh-key create --name "$KEY_NAME" --public-key "$(cat "$KEY_PUB")" >/dev/null
     fi
@@ -123,24 +118,24 @@ if [[ -z "$SSH_KEY_ID" ]]; then
 fi
 ok "SSH_KEY_ID=$SSH_KEY_ID"
 
-# Rendu cloud-init (diff vs master)
+# Rendu cloud-init
 export HOSTNAME="$NAME"
 log "Rendu cloud-init → $CI_REND (HOSTNAME=$HOSTNAME)"
 envsubst < "$CI_TMPL" > "$CI_REND"
 
 # Serveur existe ?
-EXISTS=0
-if hcloud server describe "$NAME" >/dev/null 2>&1; then EXISTS=1; fi
-
-if (( EXISTS )) && (( RECREATE )); then
-  log "Suppression de '$NAME' (recreate demandé)…"
-  hcloud server delete "$NAME"
-  EXISTS=0
-  ok "Serveur supprimé."
+if hcloud server describe "$NAME" >/dev/null 2>&1; then
+  if [[ "$RECREATE" -eq 1 ]]; then
+    log "Suppression de '$NAME' (recreate)…"
+    hcloud server delete "$NAME"
+    ok "Serveur supprimé."
+  else
+    ok "VM déjà présente, pas de création."
+  fi
 fi
 
-# Création si nécessaire
-if (( ! EXISTS )); then
+# Créer
+if ! hcloud server describe "$NAME" >/dev/null 2>&1; then
   log "Création de $NAME (type=$TYPE, image=$IMAGE, loc=$LOCATION, key=$SSH_KEY_ID)"
   hcloud server create \
     --name "$NAME" \
@@ -150,8 +145,6 @@ if (( ! EXISTS )); then
     --ssh-key "$SSH_KEY_ID" \
     --user-data-from-file "$CI_REND" >/dev/null
   ok "VM créée."
-else
-  ok "VM déjà présente, pas de création."
 fi
 
 # IP publique
@@ -160,20 +153,17 @@ IP="$(hcloud server describe "$NAME" -o json | jq -r '.public_net.ipv4.ip')"
 [[ -n "$IP" && "$IP" != "null" ]] || { err "Impossible de récupérer l'IP publique"; exit 1; }
 ok "IP publique: $IP"
 
-# known_hosts (pas d’alertes host key changed)
+# known_hosts
 ssh-keygen -R "$IP" >/dev/null 2>&1 || true
 ssh-keyscan -H "$IP" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-# Inventaire Ansible local (style master, mais groupe bastion)
-log "Mise à jour inventaire local: $INV_FILE"
+# Inventaire Ansible local (groupe [bastion])
+log "Mise à jour inventaire: $INV_FILE"
 if [[ -f "$INV_FILE" ]]; then
-  # supprime ancienne entrée bastion
-  sed -i '' -e "/^bastion /d" "$INV_FILE" 2>/dev/null || sed -i "/^bastion /d" "$INV_FILE"
-  # s'assurer du header [bastion]
+  sed -i'' -e "/^bastion /d" "$INV_FILE" 2>/dev/null || sed -i "/^bastion /d" "$INV_FILE"
   if ! grep -q "^\[bastion\]" "$INV_FILE"; then
     printf "\n[bastion]\n" >> "$INV_FILE"
   fi
-  # ajoute/replace la ligne bastion
   awk -v ip="$IP" -v key="$KEY_PATH" '
     BEGIN{printed=0}
     /^\[bastion\]/{print; print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"; printed=1; next}
@@ -188,7 +178,7 @@ EOF
 fi
 ok "Inventaire local mis à jour"
 
-# Attendre SSH et test court
+# Attendre SSH + test
 wait_ssh "$IP" "$KEY_PATH"
 log "Test SSH : ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i $KEY_PATH root@$IP true"
 ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i "$KEY_PATH" root@"$IP" true
