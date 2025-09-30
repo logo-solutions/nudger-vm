@@ -49,27 +49,40 @@ ok "SSH_KEY_ID=$SSH_KEY_ID"
 
 # Inventaire Ansible  (écrit la clé durable)
 log "Mise à jour inventaire: $INV_FILE"
+# ── Inventory (mode simple : on réécrit proprement) ──
+INV_FILE="$SCRIPT_DIR/../../infra/k8s_ansible/inventory.ini"
+install -d "$(dirname "$INV_FILE")"
+
+# Si tu veux garder l'IP du bastion existant (au lieu de tout perdre),
+# on tente de la relire AVANT d’écraser le fichier.
+BASTION_LINE=""
 if [[ -f "$INV_FILE" ]]; then
-  sed -i "/^$NAME /d" "$INV_FILE"
-  if ! grep -q "^\[k8s_masters\]" "$INV_FILE"; then
-    printf "[k8s_masters]\n" | cat - "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
-  fi
-  awk -v name="$NAME" -v ip="$IP" -v key="$KEY_PATH" '
-    BEGIN{printed=0}
-    /^\[k8s_masters\]/{print; print name " ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"; printed=1; next}
-    {print}
-    END{if(!printed) print name " ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"}
-  ' "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
-else
-  cat > "$INV_FILE" <<EOF
+  BASTION_LINE="$(awk '
+    $0 ~ /^\[bastion\]/ { inb=1; next }
+    inb && NF && $1 !~ /^\[/ { print; exit }
+  ' "$INV_FILE")"
+fi
+
+# Si on a trouvé une ligne bastion déjà valable, on la réutilise,
+# sinon on met un placeholder pour ne rien bloquer.
+if [[ -z "$BASTION_LINE" ]]; then
+  BASTION_LINE="bastion ansible_host=CHANGE_ME ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3"
+fi
+
+cat > "$INV_FILE" <<EOF
+# =========================
+# INVENTORY.ANSIBLE
+# =========================
+
 [k8s_masters]
 $NAME ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3
 
-[bastion]
-bastion_host ansible_host=127.0.0.1 ansible_connection=local ansible_python_interpreter=/usr/bin/python3
-
+# groupe logique pour faciliter les playbooks
 [master:children]
 k8s_masters
+
+[bastion]
+$BASTION_LINE
 EOF
-fi
+
 ok "Inventaire mis à jour"
