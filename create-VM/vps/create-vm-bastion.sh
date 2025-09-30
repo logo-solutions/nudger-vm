@@ -8,6 +8,8 @@ TYPE="${TYPE:-cpx31}"
 LOCATION="${LOCATION:-hel1}"
 IMAGE="${IMAGE:-ubuntu-22.04}"
 CONTEXT="${CONTEXT:-nudger}"
+# Auto commit/push de l'inventaire (opt-in)
+AUTO_COMMIT="${AUTO_COMMIT:-0}"   # 1 pour activer
 
 # Clé SSH Durable
 SSH_KEY_ID="${SSH_KEY_ID:-}"                   # si tu veux forcer l'ID
@@ -177,6 +179,51 @@ bastion ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=$KEY_PAT
 EOF
 fi
 ok "Inventaire local mis à jour"
+# ====== AUTO COMMIT / PUSH (opt-in) ======
+if [[ "$AUTO_COMMIT" == "1" ]]; then
+  REPO_ROOT="$(cd "$DIRHOME" && git rev-parse --show-toplevel 2>/dev/null || echo "")"
+  if [[ -z "$REPO_ROOT" ]]; then
+    LOG "🛈 AUTO_COMMIT=1 ignoré (pas un repo git sous $DIRHOME)"
+  else
+    (
+      cd "$REPO_ROOT"
+
+      # Branche courante + remote
+      BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+      ORIGIN_URL="$(git remote get-url origin 2>/dev/null || echo "")"
+
+      # Config auteur locale, non intrusive si déjà définie
+      git config user.name  >/dev/null || git config user.name  "nudger-bot"
+      git config user.email >/div/null || git config user.email "devops@logo-solutions"
+
+      # Assure-toi d’être à jour pour éviter les non-fast-forward
+      git pull --rebase --autostash || true
+
+      # Ne stage QUE l’inventaire
+      FILE="infra/k8s_ansible/inventory.ini"
+
+      # Commit seulement s’il y a un vrai diff
+      if ! git diff --quiet -- "$FILE"; then
+        git add "$FILE"
+        MSG="chore(inventory): update bastion IP ${VM_IP}"
+        git commit -m "$MSG"
+
+        # Push :
+        # - si remote HTTPS et GITHUB_TOKEN présent → pousse avec header Auth (pas d’URL à encoder)
+        # - sinon push standard (SSH ou HTTPS déjà authentifié)
+        if [[ -n "$GITHUB_TOKEN" && "$ORIGIN_URL" == https://* ]]; then
+          git -c http.extraheader="Authorization: Bearer ${GITHUB_TOKEN}" \
+              push origin "$BRANCH"
+        else
+          git push origin "$BRANCH"
+        fi
+        LOG "✅ Inventory poussé: $FILE → $BRANCH"
+      else
+        LOG "🛈 Aucun changement à committer dans $FILE"
+      fi
+    )
+  fi
+fi
 
 # Attendre SSH + test
 wait_ssh "$IP" "$KEY_PATH"
