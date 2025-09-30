@@ -1,7 +1,19 @@
+# =========================
+# INVENTORY.ANSIBLE
+# =========================
 
 [bastion]
-bastion ansible_host=157.180.42.146 ansible_user=root ansible_ssh_private_key_file=/Users/loicgourmelon/.ssh/hetzner-bastion ansible_python_interpreter=/usr/bin/python3
-bastion_host ansible_host=65.109.12.160 ansible_user=root ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+bastion ansible_host=157.180.42.146 \
+        ansible_user=root \
+        ansible_ssh_private_key_file=/Users/loicgourmelon/.ssh/hetzner-bastion \
+        ansible_python_interpreter=/usr/bin/python3
 
-[master]
-master1 ansible_host=65.109.12.160 ansible_user=root ansible_ssh_private_key_file=/root/.ssh/id_ansible_vm
+[k8s_masters]
+master1 ansible_host=XXX.XXX.XXX.XXX \
+        ansible_user=root \
+        ansible_ssh_private_key_file=/root/.ssh/id_ansible_vm \
+        ansible_python_interpreter=/usr/bin/python3
+
+# groupe logique pour faciliter les playbooks
+[master:children]
+k8s_masters
