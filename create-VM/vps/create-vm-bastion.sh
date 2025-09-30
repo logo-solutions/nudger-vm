@@ -152,51 +152,38 @@ ssh-keygen -R "$IP" >/dev/null 2>&1 || true
 ssh-keyscan -H "$IP" >> ~/.ssh/known_hosts 2>/dev/null || true
 
 # Inventaire Ansible : normaliser la section [bastion] en mode SSH depuis le host
-# Inventaire Ansible local (groupe [bastion]) — FORCER FORMAT PROPRE
 log "Mise à jour inventaire: $INV_FILE"
 touch "$INV_FILE"
 cat > /tmp/bastion_fix.awk <<'AWK'
 BEGIN {
-  inb=0; injected=0; seen_header=0;
-}
-# Toute entête de section
-/^\[/ {
-  # Si on sort de [bastion] sans avoir encore injecté la ligne propre → l’injecter
-  if (inb && !injected) {
-    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3";
-    injected=1;
+# sections
+/^\[/{
+  if(inb && !injected){
+    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
+    injected=1
   }
-  print;                                  # recopier l’entête
-  if ($0 ~ /^\[bastion\]$/) {
-    inb=1; seen_header=1; next;           # on entre dans la section [bastion]
-  } else {
-    inb=0; next;                          # on est dans une autre section
-  }
+  print
+  if($0 ~ /^\[bastion\]$/){ inb=1; seen=1; next } else { inb=0; next }
 }
 {
-  if (inb) {
-    # Dans [bastion], on purge les anciennes lignes et saletés:
-    if ($0 ~ /^bastion[[:space:]]/) next;     # ancienne entrée bastion
-    if ($0 ~ /\\[[:space:]]*$/)     next;     # lignes finissant par \
-    next;                                     # on n’imprime rien d’autre de l’ancienne section
+  if(inb){
+    if($0 ~ /^bastion[[:space:]]/) next         # vire anciennes entrées
+    if($0 ~ /\\[[:space:]]*$/)   next           # vire les lignes finissant par '\'
+    next                                         # ne recopie rien d'autre dans la section
   }
-  print;                                      # hors [bastion], on recopie tel quel
+  print
 }
-END {
-  if (!seen_header) {
-    print "";
-    print "[bastion]";
-  }
-  if (!injected) {
-    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3";
+END{
+  if(!seen){ print ""; print "[bastion]" }
+  if(!injected){
+    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
   }
 }
 AWK
 
-# Exécution awk : écrit une section [bastion] propre (jamais 'ansible_connection=local', aucun '\')
-awk -v ip="$IP" -v key="$KEY_PATH" -f /tmp/bastion_fix.awk "$INV_FILE" > "$INV_FILE.tmp" \
-  && mv "$INV_FILE.tmp" "$INV_FILE"
-ok "Inventaire local mis à jour"
+awk -v ip="$BASTION_IP" -v key="$KEY_PATH" -f /tmp/fix_bastion.awk "$INV" > "$INV.tmp" && mv "$INV.tmp" "$INV"
+echo "✅ inventory.ini corrigé (section [bastion] SSH, sans ansible_connection=local)."
+
 # SSH test
 wait_ssh "$IP" "$KEY_PATH"
 log "Test SSH : ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i $KEY_PATH root@$IP true"
