@@ -153,41 +153,73 @@ ssh-keyscan -H "$IP" >> ~/.ssh/known_hosts 2>/dev/null || true
 
 # Inventaire Ansible : normaliser la section [bastion] en mode SSH depuis le host
 log "Mise à jour inventaire: $INV_FILE"
+# Inventaire Ansible : normaliser la section [bastion] (toujours SSH depuis le host)
+log "Mise à jour inventaire: $INV_FILE"
 touch "$INV_FILE"
-cat > /tmp/bastion_fix.awk <<'AWK'
-BEGIN {
-# sections
-/^\[/{
-  if(inb && !injected){
-    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
-    injected=1
-  }
-  print
-  if($0 ~ /^\[bastion\]$/){ inb=1; seen=1; next } else { inb=0; next }
-}
+
+cat > /tmp/fix_bastion.awk <<'AWK'
+# Normalise la section [bastion] :
+#  - conserve tout le reste inchangé
+#  - supprime toute ancienne ligne "bastion ..." dans [bastion]
+#  - injecte exactement UNE ligne bastion en SSH (ip + clé)
+# Variables passées : ip, key
 {
-  if(inb){
-    if($0 ~ /^bastion[[:space:]]/) next         # vire anciennes entrées
-    if($0 ~ /\\[[:space:]]*$/)   next           # vire les lignes finissant par '\'
-    next                                         # ne recopie rien d'autre dans la section
+  # Début d'une section ?
+  if ($0 ~ /^\[/) {
+    # Si on sort de [bastion] sans avoir injecté, injecte maintenant
+    if (inb && !injected) {
+      print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
+      injected = 1
+    }
+    print
+    if ($0 ~ /^\[bastion\]$/) {
+      inb = 1
+      seen = 1
+    } else {
+      inb = 0
+    }
+    next
   }
+
+  # À l'intérieur de [bastion], on ne recopie rien sauf notre future ligne
+  if (inb) {
+    # on purge les vieilles lignes (y compris celles finissant par '\')
+    next
+  }
+
+  # Hors de [bastion], on recopie tel quel
   print
 }
-END{
-  if(!seen){ print ""; print "[bastion]" }
-  if(!injected){
+END {
+  # Si le fichier n'avait pas de [bastion], crée la section + notre ligne
+  if (!seen) {
+    print ""
+    print "[bastion]"
+    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
+    next
+  }
+  # Si on a vu [bastion] mais jamais injecté (ex: section en fin de fichier)
+  if (!injected) {
     print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
   }
 }
 AWK
 
-awk -v ip="$BASTION_IP" -v key="$KEY_PATH" -f /tmp/fix_bastion.awk "$INV" > "$INV.tmp" && mv "$INV.tmp" "$INV"
-echo "✅ inventory.ini corrigé (section [bastion] SSH, sans ansible_connection=local)."
+awk -v ip="$IP" -v key="$KEY_PATH" -f /tmp/fix_bastion.awk "$INV_FILE" > "$INV_FILE.tmp" \
+  && mv "$INV_FILE.tmp" "$INV_FILE"
+
+ok "inventory.ini corrigé (section [bastion] en SSH, jamais 'ansible_connection=local')."
+
+# (optionnel) si des lignes avec '\' traînent dans [k8s_masters], Ansible râle.
+# On les commente pour éviter l'erreur INI sans toucher au contenu
+sed -i'' -e '/\\[[:space:]]*$/ s/^/# (wrapped removed) /' "$INV_FILE" 2>/dev/null || true
 
 # SSH test
 wait_ssh "$IP" "$KEY_PATH"
 log "Test SSH : ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i $KEY_PATH root@$IP true"
 ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i "$KEY_PATH" root@"$IP" true
+echo "✅ inventory.ini corrigé (section [bastion] SSH, sans ansible_connection=local)."
+
 
 ok "Bastion prêt: $NAME ($IP)"
 echo "Astuce: ansible -i $INV_FILE bastion -m ping -u root"
