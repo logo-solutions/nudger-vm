@@ -147,17 +147,14 @@ log "Mise à jour inventaire: $INV_FILE"
 mkdir -p "$(dirname "$INV_FILE")"
 touch "$INV_FILE"
 
-# 1) Supprimer les sections existantes [k8s_masters] et [master:children]
-awk '
-  BEGIN{in_km=0; in_mc=0}
-  /^\[k8s_masters\]$/   {in_km=1; next}
-  /^\[master:children\]$/ {in_mc=1; next}
-  /^\[/ {in_km=0; in_mc=0}
-  { if(!in_km && !in_mc) print }
-' "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
+# 1) Purge ancienne section bastion
+sed -i '/^\[bastion\]/,/^\[/ { /^\[bastion\]/! {/^\[/!d } }' "$INV_FILE"
 
-# 2) Ajouter proprement, sans backslashes ni continuation
+# 2) Réécriture bastion (toujours propre, pas de backslash, pas de doublon)
 {
+  echo ""
+  echo "[bastion]"
+  echo "bastion_host ansible_host=127.0.0.1 ansible_connection=local ansible_user=root ansible_python_interpreter=/usr/bin/python3"
   echo ""
   echo "[k8s_masters]"
   echo "$NAME ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3"
@@ -167,17 +164,6 @@ awk '
 } >> "$INV_FILE"
 
 ok "Inventaire mis à jour"
-
-# ── Test SSH ───────────────────────────────────────────────────────────────
-log "Attente SSH ($IP) avec $KEY_PATH…"
-for i in $(seq 1 30); do
-  if ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no -i "$KEY_PATH" root@"$IP" true 2>/dev/null; then
-    ok "SSH OK sur $IP"
-    break
-  fi
-  sleep 3
-done
-
 log "Test SSH : ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i $KEY_PATH root@$IP true"
 ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i "$KEY_PATH" root@"$IP" true
 

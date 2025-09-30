@@ -21,8 +21,8 @@ git clone https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-vm
 # INSTALL VM MASTER
 export HCLOUD_TOKEN= (a recuperer depuis bitwarden)
 ```bash
-~/nudger-vm/create-VM/vps/create-vm-master.sh -t "$HCLOUD_TOKEN" --ssh-key-id 102768386
+~/nudger-vm/create-VM/vps/create-vm-master.sh   -t "$HCLOUD_TOKEN"   --ssh-key-id 102768386   --key-path "$KEY_PATH"   --recreate
 ./scripts/master/post-install-master.sh
 ```
 
-
+~/nudger-vm/scripts/bastion/post-install-vm-bastion.sh
