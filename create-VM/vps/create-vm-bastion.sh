@@ -162,21 +162,46 @@ ssh-keyscan -H "$IP" >> ~/.ssh/known_hosts 2>/dev/null || true
 # Inventaire Ansible local (groupe [bastion])
 log "Mise à jour inventaire: $INV_FILE"
 if [[ -f "$INV_FILE" ]]; then
+  # Supprimer les anciennes lignes bastion
   sed -i'' -e "/^bastion /d" "$INV_FILE" 2>/dev/null || sed -i "/^bastion /d" "$INV_FILE"
+
+  # Ajouter l'entête si manquante
   if ! grep -q "^\[bastion\]" "$INV_FILE"; then
     printf "\n[bastion]\n" >> "$INV_FILE"
   fi
-  awk -v ip="$IP" -v key="$KEY_PATH" '
-    BEGIN{printed=0}
-    /^\[bastion\]/{print; print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"; printed=1; next}
-    {print}
-    END{if(!printed) print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"}
-  ' "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
+
+  # Différencier selon l’endroit où tourne le script
+  if [[ "$(hostname)" == "bastion" || "$HOSTNAME" == "bastion" ]]; then
+    # Mode bastion → connexion locale
+    awk -v ip="$IP" '
+      BEGIN{printed=0}
+      /^\[bastion\]/{print; print "bastion ansible_host=127.0.0.1 ansible_connection=local ansible_user=root ansible_python_interpreter=/usr/bin/python3"; printed=1; next}
+      {print}
+      END{if(!printed) print "bastion ansible_host=127.0.0.1 ansible_connection=local ansible_user=root ansible_python_interpreter=/usr/bin/python3"}
+    ' "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
+  else
+    # Mode host (Mac) → connexion SSH avec clé
+    awk -v ip="$IP" -v key="$KEY_PATH" '
+      BEGIN{printed=0}
+      /^\[bastion\]/{print; print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"; printed=1; next}
+      {print}
+      END{if(!printed) print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"}
+    ' "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
+  fi
+
 else
-  cat > "$INV_FILE" <<EOF
+  # Fichier inexistant → création
+  if [[ "$(hostname)" == "bastion" || "$HOSTNAME" == "bastion" ]]; then
+    cat > "$INV_FILE" <<EOF
+[bastion]
+bastion ansible_host=127.0.0.1 ansible_connection=local ansible_user=root ansible_python_interpreter=/usr/bin/python3
+EOF
+  else
+    cat > "$INV_FILE" <<EOF
 [bastion]
 bastion ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3
 EOF
+  fi
 fi
 ok "Inventaire local mis à jour"
 # ====== AUTO COMMIT / PUSH (opt-in) ======
