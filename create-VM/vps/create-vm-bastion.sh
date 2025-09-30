@@ -155,50 +155,47 @@ ssh-keyscan -H "$IP" >> ~/.ssh/known_hosts 2>/dev/null || true
 # Inventaire Ansible local (groupe [bastion]) — FORCER FORMAT PROPRE
 log "Mise à jour inventaire: $INV_FILE"
 touch "$INV_FILE"
-
-# Reconstruire le fichier en garantissant :
-#  - une seule section [bastion]
-#  - exactement UNE ligne 'bastion …' sans backslashes ni ansible_connection=local
-#  - on ne modifie pas les autres sections
-awk_prog='
-# Inventaire Ansible local (section [bastion] propre)
-log "Mise à jour inventaire: $INV_FILE"
-touch "$INV_FILE"
-
-awk_prog='
-BEGIN { inb=0; injected=0; seen_header=0 }
+cat > /tmp/bastion_fix.awk <<'AWK'
+BEGIN {
+  inb=0; injected=0; seen_header=0;
+}
 # Toute entête de section
 /^\[/ {
-  # Si on sort de [bastion] sans avoir injecté la ligne propre
+  # Si on sort de [bastion] sans avoir encore injecté la ligne propre → l’injecter
   if (inb && !injected) {
-    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
-    injected=1
+    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3";
+    injected=1;
   }
-  print
-  if ($0 ~ /^\[bastion\]$/) { inb=1; seen_header=1; next } else { inb=0; next }
+  print;                                  # recopier l’entête
+  if ($0 ~ /^\[bastion\]$/) {
+    inb=1; seen_header=1; next;           # on entre dans la section [bastion]
+  } else {
+    inb=0; next;                          # on est dans une autre section
+  }
 }
 {
   if (inb) {
-    # Supprimer toute ancienne ligne bastion et toute ligne finissant par un backslash
-    if ($0 ~ /^bastion[[:space:]]/) next
-    if ($0 ~ /\\[[:space:]]*$/)     next
-    # Ne pas recopier le contenu ancien de la section bastion
-    next
+    # Dans [bastion], on purge les anciennes lignes et saletés:
+    if ($0 ~ /^bastion[[:space:]]/) next;     # ancienne entrée bastion
+    if ($0 ~ /\\[[:space:]]*$/)     next;     # lignes finissant par \
+    next;                                     # on n’imprime rien d’autre de l’ancienne section
   }
-  print
+  print;                                      # hors [bastion], on recopie tel quel
 }
 END {
   if (!seen_header) {
-    print ""
-    print "[bastion]"
+    print "";
+    print "[bastion]";
   }
   if (!injected) {
-    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
+    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3";
   }
-}'
+}
+AWK
 
-awk -v ip="$IP" -v key="$KEY_PATH" "$awk_prog" "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
-
+# Exécution awk : écrit une section [bastion] propre (jamais 'ansible_connection=local', aucun '\')
+awk -v ip="$IP" -v key="$KEY_PATH" -f /tmp/bastion_fix.awk "$INV_FILE" > "$INV_FILE.tmp" \
+  && mv "$INV_FILE.tmp" "$INV_FILE"
 ok "Inventaire local mis à jour"
 # SSH test
 wait_ssh "$IP" "$KEY_PATH"
