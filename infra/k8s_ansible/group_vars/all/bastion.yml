@@ -2,7 +2,7 @@
 #  GITHUB APP (BASTION)
 # ===========================
 github_app_id: "2024451"               # utilisé seulement par bastion
-github_app_installation_id: "87738262" # idem
+github_app_installation_id: "88168770"
 github_app_secrets_dir: "/etc/github-app"
 github_app_private_key_file: "{{ github_app_secrets_dir }}/nudger-vm.private-key.pem"
 
