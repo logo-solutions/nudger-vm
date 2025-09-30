@@ -153,60 +153,21 @@ ssh-keyscan -H "$IP" >> ~/.ssh/known_hosts 2>/dev/null || true
 
 # Inventaire Ansible : normaliser la section [bastion] en mode SSH depuis le host
 log "Mise à jour inventaire: $INV_FILE"
-# Inventaire Ansible : normaliser la section [bastion] (toujours SSH depuis le host)
-log "Mise à jour inventaire: $INV_FILE"
-touch "$INV_FILE"
+cat > "$INV_FILE" <<EOF
+# =========================
+# INVENTORY.ANSIBLE
+# =========================
 
-cat > /tmp/fix_bastion.awk <<'AWK'
-# Normalise la section [bastion] :
-#  - conserve tout le reste inchangé
-#  - supprime toute ancienne ligne "bastion ..." dans [bastion]
-#  - injecte exactement UNE ligne bastion en SSH (ip + clé)
-# Variables passées : ip, key
-{
-  # Début d'une section ?
-  if ($0 ~ /^\[/) {
-    # Si on sort de [bastion] sans avoir injecté, injecte maintenant
-    if (inb && !injected) {
-      print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
-      injected = 1
-    }
-    print
-    if ($0 ~ /^\[bastion\]$/) {
-      inb = 1
-      seen = 1
-    } else {
-      inb = 0
-    }
-    next
-  }
+[k8s_masters]
+# (vide tant qu'aucun master n'a été créé)
 
-  # À l'intérieur de [bastion], on ne recopie rien sauf notre future ligne
-  if (inb) {
-    # on purge les vieilles lignes (y compris celles finissant par '\')
-    next
-  }
+# groupe logique pour faciliter les playbooks
+[master:children]
+k8s_masters
 
-  # Hors de [bastion], on recopie tel quel
-  print
-}
-END {
-  # Si le fichier n'avait pas de [bastion], crée la section + notre ligne
-  if (!seen) {
-    print ""
-    print "[bastion]"
-    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
-    next
-  }
-  # Si on a vu [bastion] mais jamais injecté (ex: section en fin de fichier)
-  if (!injected) {
-    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
-  }
-}
-AWK
-
-awk -v ip="$IP" -v key="$KEY_PATH" -f /tmp/fix_bastion.awk "$INV_FILE" > "$INV_FILE.tmp" \
-  && mv "$INV_FILE.tmp" "$INV_FILE"
+[bastion]
+bastion ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3
+EOF
 
 ok "inventory.ini corrigé (section [bastion] en SSH, jamais 'ansible_connection=local')."
 
