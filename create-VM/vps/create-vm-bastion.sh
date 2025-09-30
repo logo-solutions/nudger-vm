@@ -151,56 +151,65 @@ ok "IP publique: $IP"
 ssh-keygen -R "$IP" >/dev/null 2>&1 || true
 ssh-keyscan -H "$IP" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-# Inventaire : [bastion] toujours en SSH
 # Inventaire Ansible : normaliser la section [bastion] en mode SSH depuis le host
+# Inventaire Ansible local (groupe [bastion]) — FORCER FORMAT PROPRE
 log "Mise à jour inventaire: $INV_FILE"
-
-# Assurer l'existence du fichier
-mkdir -p "$(dirname "$INV_FILE")"
 touch "$INV_FILE"
 
-# 1) S’assurer que l’en-tête [bastion] existe (sinon on l’ajoute en fin)
-if ! grep -q '^\[bastion\]' "$INV_FILE"; then
-  printf "\n[bastion]\n" >> "$INV_FILE"
-fi
-
-# 2) Purger ce qui est incorrect sous [bastion]
-#    - supprimer les lignes 'bastion ' et 'bastion_host '
-#    - virer toute occurrence de 'ansible_connection=local' si jamais présente
-TMP1="$(mktemp)"; TMP2="$(mktemp)"
-awk '
-  BEGIN{inb=0}
-  /^\[bastion\]$/ {print; inb=1; next}
-  /^\[.*\]$/      {print; inb=0; next}
-  {
-    if(inb){
-      # skip anciennes entrées
-      if ($1=="bastion" || $1=="bastion_host") next
-      # sinon, réimprimer la ligne en supprimant ansible_connection=local si elle traîne
-      gsub(/[[:space:]]*ansible_connection=local/, "", $0)
-    }
-    print
-  }
-' "$INV_FILE" > "$TMP1"
-
-# 3) Insérer l’unique entrée bastion propre juste après l’en-tête
-#    Format souhaité : bastion ansible_host=<IP> ansible_user=root ansible_ssh_private_key_file=<KEY> ansible_python_interpreter=/usr/bin/python3
+# Reconstruire le fichier en garantissant :
+#  - une seule section [bastion]
+#  - exactement UNE ligne 'bastion …' sans backslashes ni ansible_connection=local
+#  - on ne modifie pas les autres sections
 awk -v ip="$IP" -v key="$KEY_PATH" '
-  BEGIN{inb=0; injected=0}
-  /^\[bastion\]$/ {
-    print
-    print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
-    inb=1; injected=1; next
+  BEGIN{
+    inb=0; injected=0; seen_header=0;
   }
-  { print }
-  END{
-    if(!injected){
-      print "[bastion]"
-      print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
+  # Toute nouvelle section
+  /^\[/ {
+    # si on quitte [bastion] sans avoir injecté la ligne, on l’insère maintenant
+    if (inb && !injected) {
+      print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3";
+      injected=1;
+    }
+    # imprimer la section actuelle
+    print;
+
+    # sommes-nous sur [bastion] ?
+    if ($0 ~ /^\[bastion\]$/) {
+      inb=1; seen_header=1;
+      next;
+    } else {
+      inb=0;
+      next;
     }
   }
-' "$TMP1" > "$TMP2" && mv "$TMP2" "$INV_FILE"
-rm -f "$TMP1"
+
+  {
+    if (inb) {
+      # Dans [bastion] on :
+      #  - supprime toute ancienne ligne commencant par "bastion "
+      #  - ignore les lignes invalides héritées (avec '\')
+      if ($0 ~ /^bastion[[:space:]]/) next;
+      if ($0 ~ /\\[[:space:]]*$/)     next;
+      # autrement, on ignore simplement (pas d’impression) pour garder [bastion] compacte
+      next;
+    }
+    # hors de [bastion], on imprime tel quel
+    print;
+  }
+
+  END{
+    # Si aucune section [bastion] n’a été vue, on l’ajoute à la fin
+    if (!seen_header) {
+      print "";
+      print "[bastion]";
+    }
+    # Si la ligne bastion propre n’a pas encore été injectée, on l’ajoute
+    if (!injected) {
+      print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3";
+    }
+  }
+' "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
 
 ok "Inventaire local mis à jour"
 # SSH test
