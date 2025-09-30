@@ -161,10 +161,15 @@ touch "$INV_FILE"
 #  - exactement UNE ligne 'bastion …' sans backslashes ni ansible_connection=local
 #  - on ne modifie pas les autres sections
 awk_prog='
+# Inventaire Ansible local (section [bastion] propre)
+log "Mise à jour inventaire: $INV_FILE"
+touch "$INV_FILE"
+
+awk_prog='
 BEGIN { inb=0; injected=0; seen_header=0 }
-# Any section header
+# Toute entête de section
 /^\[/ {
-  # Leaving [bastion] without having injected the clean line yet
+  # Si on sort de [bastion] sans avoir injecté la ligne propre
   if (inb && !injected) {
     print "bastion ansible_host=" ip " ansible_user=root ansible_ssh_private_key_file=" key " ansible_python_interpreter=/usr/bin/python3"
     injected=1
@@ -174,9 +179,10 @@ BEGIN { inb=0; injected=0; seen_header=0 }
 }
 {
   if (inb) {
-    # Drop any previous/dirty bastion lines or trailing-backslash junk
+    # Supprimer toute ancienne ligne bastion et toute ligne finissant par un backslash
     if ($0 ~ /^bastion[[:space:]]/) next
-    if ($0 ~ /\\[[:space:]]*$/) next
+    if ($0 ~ /\\[[:space:]]*$/)     next
+    # Ne pas recopier le contenu ancien de la section bastion
     next
   }
   print
