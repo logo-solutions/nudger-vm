@@ -47,42 +47,40 @@ ok "SSH_KEY_ID=$SSH_KEY_ID"
 
 # … (création VM inchangée)
 
-# Inventaire Ansible  (écrit la clé durable)
+# ── Inventaire Ansible 
 log "Mise à jour inventaire: $INV_FILE"
-# ── Inventory (mode simple : on réécrit proprement) ──
-INV_FILE="$SCRIPT_DIR/../../infra/k8s_ansible/inventory.ini"
-install -d "$(dirname "$INV_FILE")"
+touch "$INV_FILE"
 
-# Si tu veux garder l'IP du bastion existant (au lieu de tout perdre),
-# on tente de la relire AVANT d’écraser le fichier.
-BASTION_LINE=""
-if [[ -f "$INV_FILE" ]]; then
-  BASTION_LINE="$(awk '
-    $0 ~ /^\[bastion\]/ { inb=1; next }
-    inb && NF && $1 !~ /^\[/ { print; exit }
-  ' "$INV_FILE")"
-fi
+LINE="$NAME ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=/root/.ssh/hetzner-bastion ansible_python_interpreter=/usr/bin/python3"
 
-# Si on a trouvé une ligne bastion déjà valable, on la réutilise,
-# sinon on met un placeholder pour ne rien bloquer.
-if [[ -z "$BASTION_LINE" ]]; then
-  BASTION_LINE="bastion ansible_host=CHANGE_ME ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3"
-fi
+awk -v line="$LINE" -v name="$NAME" '
+  BEGIN{in=0; seen=0; wrote=0}
+  /^\[/ {
+    if(in && !wrote){ print line; wrote=1 }
+    print
+    in=($0 ~ /^\[k8s_masters\]$/)
+    if(in) seen=1
+    next
+  }
+  {
+    if(in){
+      # supprime anciennes entrées de ce node
+      if($0 ~ "^"name"[[:space:]]") next
+      if($0 ~ /^[[:space:]]*$/) next
+    }
+    print
+  }
+  END{
+    if(!seen){
+      print ""
+      print "[k8s_masters]"
+      print line
+      wrote=1
+    } else if(in && !wrote){
+      print line
+    }
+  }
+' "$INV_FILE" > "$INV_FILE.tmp" && mv "$INV_FILE.tmp" "$INV_FILE"
 
-cat > "$INV_FILE" <<EOF
-# =========================
-# INVENTORY.ANSIBLE
-# =========================
-
-[k8s_masters]
-$NAME ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3
-
-# groupe logique pour faciliter les playbooks
-[master:children]
-k8s_masters
-
-[bastion]
-$BASTION_LINE
-EOF
-
+ok "Inventaire mis à jour ($INV_FILE)"
 ok "Inventaire mis à jour"
