@@ -1,38 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Emplacement de l'inventory Ansible (même que dans create-vm-bastion.sh)
+# --- Config ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DIRHOME="$(cd "$SCRIPT_DIR/../.." && pwd)"
-INVENTORY="$DIRHOME/infra/k8s_ansible/inventory.ini"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+INVENTORY="${INVENTORY:-$REPO_ROOT/infra/k8s_ansible/inventory.ini}"
 
-# Récupère l'IP du bastion dans l'inventory
-VM_IP="$(awk '/\[bastion\]/ {getline; print $2}' "$INVENTORY" | cut -d= -f2)"
-USER="$(awk '/\[bastion\]/ {getline; for(i=1;i<=NF;i++){ if($i ~ /^ansible_user=/){split($i,a,"="); print a[2]}}}' "$INVENTORY")"
+# Paramètres optionnels
+#   GITHUB_APP_KEY_PATH : chemin de la clé privée GitHub App à copier
+#   BASTION_HOST/USER/KEY : forcer manuellement (sinon auto depuis inventory)
+GITHUB_APP_KEY_PATH="${GITHUB_APP_KEY_PATH:-${1:-}}"
 
-# Paramètres SSH
-ID_SSH="${1:-id_vm_ed25519}"
-KEY_PATH="${2:-$HOME/Downloads/nudger-vm-003.2025-09-27.private-key.pem}"
+# --- Helpers ---
+die(){ echo "❌ $*" >&2; exit 1; }
+info(){ echo "👉 $*"; }
+ok(){ echo "✅ $*"; }
 
-if [[ -z "$VM_IP" ]]; then
-  echo "❌ Impossible de trouver l'IP du bastion dans $INVENTORY"
-  exit 1
+[[ -f "$INVENTORY" ]] || die "Inventory introuvable: $INVENTORY"
+
+# --- Lire la ligne 'bastion' depuis [bastion] dans l'inventory ---
+# Exemple attendu :
+# [bastion]
+# bastion ansible_host=157.180.42.146 ansible_user=root ansible_ssh_private_key_file=/Users/loicgourmelon/.ssh/hetzner-bastion ansible_python_interpreter=/usr/bin/python3
+BASTION_LINE="$(awk '
+  $0 ~ /^\[bastion\]/ { inb=1; next }
+  inb && NF && $1 !~ /^\[/ { print; exit }
+' "$INVENTORY")"
+
+[[ -n "${BASTION_LINE:-}" ]] || die "Entrée [bastion] introuvable ou vide dans $INVENTORY"
+
+# Extraire paramètres avec fallback
+get_kv(){ echo "$BASTION_LINE" | tr ' ' '\n' | awk -F= -v k="$1" '$1==k{print $2; found=1} END{exit !found}'; }
+BASTION_HOST="${BASTION_HOST:-$(get_kv ansible_host 2>/dev/null || true)}"
+BASTION_USER="${BASTION_USER:-$(get_kv ansible_user 2>/dev/null || echo root)}"
+BASTION_KEY="${BASTION_KEY:-$(get_kv ansible_ssh_private_key_file 2>/dev/null || echo "$HOME/.ssh/hetzner-bastion")}"
+
+[[ -n "$BASTION_HOST" ]] || die "ansible_host absent dans l’inventory [bastion]"
+[[ -f "$BASTION_KEY" ]] || die "Clé privée absente: $BASTION_KEY"
+
+SSH_OPTS=(-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$BASTION_KEY")
+
+info "Préparation côté hôte pour ${BASTION_USER}@${BASTION_HOST}"
+# Éviter le warning “host key changed” en cas de recréations fréquentes
+ssh-keygen -R "$BASTION_HOST" >/dev/null 2>&1 || true
+
+# 1) Créer le répertoire sécurisé
+ssh "${SSH_OPTS[@]}" "${BASTION_USER}@${BASTION_HOST}" 'sudo mkdir -p /etc/github-app && sudo chmod 700 /etc/github-app'
+
+# 2) Copier la clé privée GitHub App si fournie
+if [[ -n "${GITHUB_APP_KEY_PATH}" ]]; then
+  [[ -f "$GITHUB_APP_KEY_PATH" ]] || die "Fichier clé GitHub App introuvable: $GITHUB_APP_KEY_PATH"
+  scp "${SSH_OPTS[@]}" "$GITHUB_APP_KEY_PATH" "${BASTION_USER}@${BASTION_HOST}:/tmp/nudger-vm.private-key.pem"
+  ssh "${SSH_OPTS[@]}" "${BASTION_USER}@${BASTION_HOST}" 'sudo mv /tmp/nudger-vm.private-key.pem /etc/github-app/nudger-vm.private-key.pem && sudo chown root:root /etc/github-app/nudger-vm.private-key.pem && sudo chmod 600 /etc/github-app/nudger-vm.private-key.pem'
+  ok "Clé GitHub App déployée dans /etc/github-app/nudger-vm.private-key.pem"
+else
+  info "Aucune clé GitHub App fournie (paramètre GITHUB_APP_KEY_PATH). Skipping copy."
 fi
 
-echo "👉 Préparation côté hôte pour $USER@$VM_IP"
-
-# Création du dossier sur la VM
-ssh -i ~/.ssh/${ID_SSH} "$USER@$VM_IP" \
-  "mkdir -p /etc/github-app && chmod 700 /etc/github-app"
-
-# Copie de la clé privée GitHub App
-scp -i ~/.ssh/${ID_SSH} "$KEY_PATH" \
-  "$USER@$VM_IP:/etc/github-app/nudger-vm.private-key.pem"
-
-# Permissions
-ssh -i ~/.ssh/${ID_SSH} "$USER@$VM_IP" \
-  "chown root:root /etc/github-app/nudger-vm.private-key.pem && chmod 600 /etc/github-app/nudger-vm.private-key.pem"
-
-echo "✅ Clé GitHub App déployée."
-echo
-echo "👉 Connecte-toi ensuite : ssh -i ~/.ssh/${ID_SSH} $USER@$VM_IP"
+ok "Bastion prêt. Connexion :"
+echo "ssh ${SSH_OPTS[*]} ${BASTION_USER}@${BASTION_HOST}"
