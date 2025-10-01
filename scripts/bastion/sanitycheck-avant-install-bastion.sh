@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+FAIL=0
+STEP=0
+
+step() {
+  STEP=$((STEP+1))
+  echo ""
+  echo "[$STEP] $1"
+}
+
+ok()   { echo "   ✅ $1"; }
+warn() { echo "   ⚠️  $1"; }
+err()  { echo "   ❌ $1"; FAIL=1; }
+
+echo "🔍 Sanity check des prérequis (AVANT création de la VM Bastion)"
+
+# 1) Vérifier outils de base
+step "Vérification des outils requis (sert à pouvoir créer/commander la VM)"
+for cmd in hcloud git ssh; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    ok "$cmd trouvé ($(command -v $cmd))"
+  else
+    err "$cmd introuvable — installez-le puis relancez"
+  fi
+done
+
+# 2) Vérifier clé privée
+SSH_KEY="${HOME}/.ssh/hetzner-bastion"
+step "Vérification de la clé privée SSH (sert à te connecter au Bastion ensuite)"
+if [[ -f "$SSH_KEY" ]]; then
+  ok "Clé privée trouvée"
+  perms=$(stat -f "%Lp" "$SSH_KEY" 2>/dev/null || stat -c "%a" "$SSH_KEY" 2>/dev/null || echo "???")
+  if [[ "$perms" != "600" ]]; then
+    warn "Permissions = $perms (correction en 600 appliquée)"
+    chmod 600 "$SSH_KEY" || true
+  else
+    ok "Permissions correctes (600)"
+  fi
+else
+  err "Clé privée manquante. Générez-la : ssh-keygen -t ed25519 -f $SSH_KEY -C 'bastion-hetzner' -a 100"
+fi
+
+# 3) Vérifier clé publique
+PUB_KEY="${SSH_KEY}.pub"
+step "Vérification de la clé publique SSH (sert à enregistrer la clé chez Hetzner)"
+if [[ -f "$PUB_KEY" ]]; then
+  ok "Clé publique trouvée"
+else
+  err "Clé publique manquante. Générez-la : ssh-keygen -y -f $SSH_KEY > $PUB_KEY"
+fi
+
+# 4) Vérifier enregistrement clé publique Hetzner
+step "Vérification de l'enregistrement de la clé publique dans Hetzner Cloud (sert à ce que Hetzner injecte la clé dans la VM)"
+if command -v hcloud >/dev/null 2>&1 && [[ -f "$PUB_KEY" ]]; then
+  local_pub="$(cat "$PUB_KEY")"
+  if hcloud ssh-key list -o noheader --output columns=public_key | grep -Fq "$local_pub"; then
+    ok "Clé publique présente dans Hetzner (OK)"
+  else
+    err "Clé publique ABSENTE chez Hetzner.
+        Ajoutez-la : hcloud ssh-key create --name hetzner-bastion --public-key \"$(cat "$PUB_KEY")\""
+  fi
+else
+  err "Impossible de vérifier l'enregistrement (hcloud ou clé publique absents)"
+fi
+
+# 5) Vérifier variable HCLOUD_TOKEN
+step "Vérification de la variable HCLOUD_TOKEN (sert à autoriser les appels API Hetzner)"
+if [[ -n "${HCLOUD_TOKEN:-}" ]]; then
+  ok "HCLOUD_TOKEN est défini"
+else
+  err "HCLOUD_TOKEN non défini. Exemple : export HCLOUD_TOKEN='<ton_token_hetzner>'"
+fi
+
+# 6) Vérifier validité du token
+step "Vérification de la validité du token Hetzner (sert à s'assurer que l’API est accessible)"
+if [[ -n "${HCLOUD_TOKEN:-}" ]] && command -v hcloud >/dev/null 2>&1; then
+  if HCLOUD_TOKEN="$HCLOUD_TOKEN" hcloud server list >/dev/null 2>&1; then
+    ok "Token valide (API Hetzner OK)"
+  else
+    err "Échec d'appel API Hetzner — token invalide ou réseau indisponible"
+  fi
+else
+  warn "Test de validité du token sauté (hcloud ou HCLOUD_TOKEN manquants)"
+fi
+
+echo ""
+if [[ "$FAIL" -eq 0 ]]; then
+  echo "✅ Sanity check terminé : tous les prérequis critiques sont présents."
+  echo "ℹ️  Le GITHUB_TOKEN sera vérifié plus tard, côté bastion, avant le 'git clone'."
+else
+  echo "❌ Sanity check terminé avec des erreurs. Corrigez les points ci-dessus puis relancez."
+  exit 1
+fi
+echo ""
+if [[ "$FAIL" -eq 0 ]]; then
+  echo "✅ Sanity check terminé : tous les prérequis critiques sont présents."
+  echo "📝 Prochaines étapes :"
+  echo "   cd ~/nudger-vm/"
+  echo "   AUTO_COMMIT=1 \\"
+  echo "   HCLOUD_TOKEN=\"\$HCLOUD_TOKEN\" \\"
+  echo "   KEY_NAME=hetzner-bastion \\"
+  echo "   KEY_PATH=\"\$HOME/.ssh/hetzner-bastion\" \\"
+  echo "   ./create-VM/vps/create-vm-bastion.sh --recreate"
+  echo "   ./scripts/bastion/post-install-host.sh"
+  exit 0
+else
+  echo "❌ Sanity check terminé avec des erreurs. Corrigez les points ci-dessus puis relancez."
+  exit 1
+fi
