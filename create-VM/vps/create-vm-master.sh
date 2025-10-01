@@ -162,6 +162,19 @@ sed -i '/^\[bastion\]/,/^\[/ { /^\[bastion\]/! {/^\[/!d } }' "$INV_FILE"
   echo "[master:children]"
   echo "k8s_masters"
 } >> "$INV_FILE"
+# ── Attente ouverture du port SSH ──────────────────────────────────────────
+log "Attente d'ouverture du port 22 sur $IP…"
+for i in $(seq 1 60); do  # ~3 minutes max
+  if nc -z "$IP" 22 2>/dev/null; then
+    ok "Port 22 ouvert"
+    break
+  fi
+  sleep 3
+done
+
+# ── Test SSH ───────────────────────────────────────────────────────────────
+log "Test SSH : ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i $KEY_PATH root@$IP true"
+ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i "$KEY_PATH" root@"$IP" true
 
 ok "Inventaire mis à jour"
 log "Test SSH : ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i $KEY_PATH root@$IP true"
