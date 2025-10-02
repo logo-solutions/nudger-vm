@@ -166,7 +166,7 @@ cat > "$INV_FILE" <<EOF
 k8s_masters
 
 [bastion]
-bastion ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3
+bastion1 ansible_host=$IP ansible_user=root ansible_ssh_private_key_file=$KEY_PATH ansible_python_interpreter=/usr/bin/python3
 EOF
 
 ok "inventory.ini corrigé (section [bastion] en SSH, jamais 'ansible_connection=local')."
