@@ -1,0 +1,26 @@
+- name: Ajouter repo Helm jetstack
+  shell: helm repo add jetstack https://charts.jetstack.io
+  args:
+    creates: /root/.cache/helm/repository/jetstack-index.yaml
+
+- name: Mettre à jour les dépôts Helm
+  shell: helm repo update
+
+- name: Créer le namespace cert-manager
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: cert-manager
+    state: present
+
+- name: Installer cert-manager via Helm
+  community.kubernetes.helm:
+    name: cert-manager
+    chart_ref: jetstack/cert-manager
+    release_namespace: cert-manager
+    values:
+      installCRDs: true
+    create_namespace: false
+    state: present
+    wait: true
+    update_repo_cache: true

@@ -88,6 +88,7 @@ ansible-galaxy collection install \
   community.general \
   community.crypto \
   community.hashi_vault \
+  community.kubernetes \
   --force
 
 # requirements optionnels (deux chemins possibles)

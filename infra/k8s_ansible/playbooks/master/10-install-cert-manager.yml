@@ -1,0 +1,8 @@
+- name: Installer cert-manager avec Helm
+  hosts: k8s_masters
+  become: yes
+  roles:
+    - cert_manager
+  tasks:
+    - name: Install cert-manager
+      import_tasks: roles/cert_manager/tasks/install.yml
