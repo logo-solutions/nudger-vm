@@ -54,5 +54,23 @@ if command -v git >/dev/null 2>&1; then
     echo "user.name=$(git config user.name) | user.email=$(git config user.email)"
   }
 fi
+# --- Prompt personnalisé (texte + couleurs)
+parse_git_branch() {
+  git branch --show-current 2>/dev/null
+}
+
+# Couleurs
+RED="\[\033[0;31m\]"
+GREEN="\[\033[0;32m\]"
+YELLOW="\[\033[0;33m\]"
+BLUE="\[\033[0;34m\]"
+MAGENTA="\[\033[0;35m\]"
+CYAN="\[\033[0;36m\]"
+RESET="\[\033[0m\]"
+
+# Prompt : user@host chemin [branche]
+PS1="${GREEN}\u${RESET}@${CYAN}\h ${YELLOW}\w${RESET}\
+\$(branch=\$(parse_git_branch); if [ -n \"\$branch\" ]; then echo \" [${MAGENTA}\$branch${RESET}]\"; fi)\n\$ "
+
   git config --global user.email "loic@logo-solutions.fr"
   git config --global user.name "logo"
