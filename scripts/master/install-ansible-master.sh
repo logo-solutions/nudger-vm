@@ -39,7 +39,6 @@ apt_retry install -y --no-install-recommends \
   python3 python3-venv python3-pip python3-dev build-essential \
   ruby ruby-dev \
   python3-kubernetes \
-  python3-openapi \
   gnupg \
   software-properties-common \
   snapd
