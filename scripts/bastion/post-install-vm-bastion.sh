@@ -63,7 +63,7 @@ grep -q '^\[bastion\]' "$INVENTORY" || printf "\n[bastion]\n" >> "$INVENTORY"
 # Écrire l’entrée locale (jamais ansible_connection=ssh ici, car on est sur le bastion)
 awk '
   BEGIN{printed=0}
-  /^\[bastion\]/{print; print "bastion ansible_host=127.0.0.1 ansible_connection=local ansible_user=root ansible_python_interpreter=/usr/bin/python3"; printed=1; next}
+  /^\[bastion1\]/{print; print "bastion ansible_host=127.0.0.1 ansible_connection=local ansible_user=root ansible_python_interpreter=/usr/bin/python3"; printed=1; next}
   {print}
   END{if(!printed) print "bastion ansible_host=127.0.0.1 ansible_connection=local ansible_user=root ansible_python_interpreter=/usr/bin/python3"}
 ' "$INVENTORY" > "$INVENTORY.tmp" && mv "$INVENTORY.tmp" "$INVENTORY"
