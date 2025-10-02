@@ -7,8 +7,6 @@ else
   echo "❌ Virtualenv Ansible absent sur bastion. Lance d'abord install-ansible-bastion.sh"
   exit 1
 fi
-echo "👉 Chargement du profil bash"
-source ~/nudger-vm/config-vm/profile_logo.sh
 
 echo "👉 Installation Ansible sur master1 via bastion"
 ansible master1 -i ~/nudger-vm/infra/k8s_ansible/inventory.ini \
