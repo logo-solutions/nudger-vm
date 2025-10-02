@@ -1,5 +1,3 @@
-# ~/.nudger/config-vm/profile_logo.sh
-
 # --- bash-completion core (if installed)
 if [ -f /usr/share/bash-completion/bash_completion ]; then
   . /usr/share/bash-completion/bash_completion
