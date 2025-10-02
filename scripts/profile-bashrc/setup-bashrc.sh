@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euxo pipefail
 
-PROFILE_PATH="${PROFILE_PATH:-$HOME/nudger-vm/config-vm/profile_logo.sh}"
+PROFILE_PATH="${PROFILE_PATH:-$HOME/nudger-vm/scripts/profile-bashrc/profile_logo.sh}"
 BLOCK_TAG="# >>> logo-bashrc >>>"
 BLOCK_END="# <<< logo-bashrc <<<"
 
