@@ -25,7 +25,12 @@ alias ke='kubectl get events -A --watch --sort-by=.metadata.creationTimestamp'
 alias aliass='. $HOME/nudger-vm/config-vm/.bash_aliases'
 alias aliasv='vim $HOME/nudger-vm/config-vm/.bash_aliases'
 alias tag='$HOME/logo-solutions/nudger-vm/scripts/git/tag.sh'
+<<<<<<< Updated upstream
 alias sshm='ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -i /root/.ssh/hetzner-bastion root@91.98.16.184'
   
 alias ssb='ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /Users/loicgourmelon/.ssh/hetzner-bastion root@157.180.42.146'
+=======
+alias sshm=' ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /Users/loicgourmelon/.ssh/hetzner-bastion root@157.180.42.146'
+alias sshb='ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /Users/loicgourmelon/.ssh/hetzner-bastion root@157.180.42.146'
+>>>>>>> Stashed changes
 alias gcp='$HOME/nudger-vm/scripts/git/gcp.sh'
