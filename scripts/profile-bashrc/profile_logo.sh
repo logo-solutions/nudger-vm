@@ -1,3 +1,4 @@
+export LOGO_DIR="/root"
 # --- bash-completion core (if installed)
 if [ -f /usr/share/bash-completion/bash_completion ]; then
   . /usr/share/bash-completion/bash_completion
@@ -17,20 +18,9 @@ if command -v kubectl >/dev/null 2>&1; then
   alias k='kubectl'
   complete -o default -F __start_kubectl k
 fi
-
-# --- git minimal aliases + helpers
+source .bash_aliases
+# --- git minimal  helpers
 if command -v git >/dev/null 2>&1; then
-  alias g='git'
-  alias gs='git status -sb'
-  alias glg='git log --oneline --graph --decorate --date=relative'
-  alias gfa='git fetch --all --prune'
-  alias gpl='git pull --ff-only'
-  alias gsw='git switch'
-  alias gswc='git switch -c'
-  alias grs='git restore'
-  alias grst='git restore --staged'
-  alias gcm='git commit -m'
-  alias gca='git add -A && git commit -m'
   gpup() { git push -u origin "$(git branch --show-current)"; }
 
   # protected branches for force push / delete
