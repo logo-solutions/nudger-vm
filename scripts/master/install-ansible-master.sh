@@ -37,7 +37,20 @@ log "Installation des dépendances système"
 apt_retry install -y --no-install-recommends \
   zsh git curl wget jq tree unzip bash-completion make tar gzip ca-certificates \
   python3 python3-venv python3-pip python3-dev build-essential \
-  ruby ruby-dev
+  ruby ruby-dev \
+  python3-kubernetes \
+  gnupg \
+  software-properties-common \
+  snapd
+
+curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+  > /etc/apt/sources.list.d/hashicorp.list
+
+apt_retry update
+apt_retry install -y terraform
+snap install helm --classic
 
 ok "Base système OK"
 

@@ -36,27 +36,34 @@ création de la clé privée et publique de hetzner
   ```
   → Hetzner crée la VM Bastion avec la **clé publique Bastion** injectée (clé déjà enregistrée dans Hetzner Cloud).
 
-
-
-- Lancer les scripts post-install :
+- Lancer le script post-install depuis le host
   ```bash
-  ./scripts/bastion/post-install-vm-bastion.sh
+  ./scripts/bastion/post-install-host.sh
   ```
+
+  → se connecter en ssh sur la machine
 - Connexion SSH avec la **clé privée Bastion** :
   ```bash
-  ssh -i ~/.ssh/hetzner-bastion root@<IP_BASTION>
+ ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /Users/loicgourmelon/.ssh/hetzner-bastion root@157.180.42.146
   ```
----
+  ```bash
+
+- Lancer le script post-install depuis bastion:
+  ```bash
+  ```
 
 ## 2. Clonage du dépôt GitHub
+###  depuis bitwarden : 
+- GITHUB_TOKEN=ghp_Wir8MaUt6lgnR8XC5OsMeOAEhiXXXXXXXXXXXX &&  git clone https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-vm
+- cat > /etc/github-app/nudger-vm.private-key.pem <<'EOF'
+- export HCLOUD_TOKEN=I4zSmFuaRyXeS
+- cat > /root/.ssh/hetzner-bastion <<'EOF'
 - Récupérer **GITHUB_TOKEN (PAT)** depuis Bitwarden.
 - Cloner le dépôt :
   ```bash
   git clone https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-vm
   ```
 ## 2. Mise en place Librairie devops et installation de vault
-- Récupérer **GITHUB_TOKEN (PAT)** depuis Bitwarden.
-- Depuis bitwarden, recrée les clés privées et publiques de hetzner-bastion
 
 - Cloner le dépôt :
   ```bash
@@ -68,10 +75,7 @@ création de la clé privée et publique de hetzner
 - Réutiliser **HCLOUD_TOKEN** (Bitwarden).
 - Créer la VM Master :
   ```bash
-  ./create-vm-master.sh \
-    -t "$HCLOUD_TOKEN" \
-    --ssh-key-id <ID clé SSH Bastion> \
-    --recreate
+ ./create-VM/vps/create-vm-master.sh
   ```
   → Ici, **l’ID de la clé SSH Bastion** (ex: `102827339`) est fourni pour que **la clé publique Bastion** soit injectée dans la VM Master.  
   → Sans ça, impossible d’accéder au Master depuis le Bastion.
