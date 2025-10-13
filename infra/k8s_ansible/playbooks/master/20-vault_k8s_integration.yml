@@ -1,0 +1,27 @@
+# playbooks/vault/vault_k8s_integration.yml
+---
+- name: Déployer Vault dans le cluster Kubernetes
+  hosts: master
+  become: true
+  vars:
+    vault_namespace: vault
+    helm_chart_name: vault
+    helm_repo: https://helm.releases.hashicorp.com
+  tasks:
+    - name: Ajouter le dépôt Helm HashiCorp
+      kubernetes.core.helm_repository:
+        name: hashicorp
+        repo_url: "{{ helm_repo }}"
+
+    - name: Déployer Vault (standalone)
+      kubernetes.core.helm:
+        name: "{{ helm_chart_name }}"
+        chart_ref: hashicorp/vault
+        release_namespace: "{{ vault_namespace }}"
+        create_namespace: true
+        values:
+          server:
+            ha:
+              enabled: false
+          injector:
+            enabled: true
