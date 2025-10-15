@@ -17,5 +17,6 @@ source ~/ansible_venv/bin/activate
 cd ~/nudger-vm/infra/k8s_ansible
 
 ansible-playbook -i inventory.ini playbooks/master/nudger.yml
+ansible-playbook -i inventory.ini playbooks/master/nudgervault.yml
 
 echo "✅ Post-install master terminé depuis bastion."

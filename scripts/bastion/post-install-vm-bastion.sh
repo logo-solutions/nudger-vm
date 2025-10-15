@@ -127,10 +127,6 @@ log "Activation KV v2 sur 'secret' (idempotent)"
 VAULT_ADDR="$VAULT_ADDR" VAULT_TOKEN="$VAULT_TOKEN" vault secrets enable -path=secret kv-v2 >/dev/null 2>&1 || true
 ok "KV v2 prêt"
 
-kv_put "secret/users/kubernetes-admin" "password" "changeme123"
-kv_put "secret/users/ops-loic"         "password" "changeme123"
-kv_put "secret/users/dev-loic"         "password" "changeme123"
-
 if [[ -f "playbooks/bastion/007b-seed-vault.yml" ]]; then
   log "Execution 007b-seed-vault.yml"
   ansible-playbook -i inventory.ini playbooks/bastion/007b-seed-vault.yml

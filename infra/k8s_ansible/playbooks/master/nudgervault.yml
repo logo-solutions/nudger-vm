@@ -1,0 +1,8 @@
+---
+# Playbook principal pour provisionner vault
+- name: 20-vault_k8s_integration
+  import_playbook: 20-vault_k8s_integration.yml
+- name: 21-vault_k8s_post_init
+  import_playbook: 21-vault_k8s_post_init.yml
+- name: 22-vault_seed.yml
+  import_playbook: 22-vault_seed.yml

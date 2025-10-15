@@ -86,6 +86,7 @@ création de la clé privée et publique de hetzner
 - Depuis le Bastion, Ansible/SSH se connecte au Master via la clé Bastion.
 - Lancer :
   ```bash
+  ./scripts/master/install-ansible-master.sh
   ./scripts/master/post-install-master.sh
   ```
 - Ce script configure :
