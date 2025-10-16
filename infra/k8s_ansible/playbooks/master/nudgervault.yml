@@ -1,8 +1,38 @@
 ---
-# Playbook principal pour provisionner vault
-- name: 20-vault_k8s_integration
-  import_playbook: 20-vault_k8s_integration.yml
-- name: 21-vault_k8s_post_init
-  import_playbook: 21-vault_k8s_post_init.yml
-- name: 22-vault_seed.yml
-  import_playbook: 22-vault_seed.yml
+# playbooks/master/nudgervault.yml
+
+# Orchestration complète : Helm → Init/Unseal → Seed → AppRole → Terraform
+
+- import_playbook: 20-vault_k8s_integration.yml
+- import_playbook: 21-vault_k8s_post_init.yml
+- import_playbook: 22-vault_seed.yml
+- import_playbook: 23-vault_create_approle_terraform.yml
+
+- name: 5) Établir un port-forward local vers Vault (svc/vault → 127.0.0.1:8200)
+  hosts: bastion
+  gather_facts: false
+  tasks:
+    - name: Établir le port-forward
+      ansible.builtin.shell: |
+        pkill -f "kubectl port-forward -n vault" || true
+        nohup kubectl port-forward -n vault svc/vault 8200:8200 >/tmp/vault-forward.log 2>&1 &
+        sleep 3
+      changed_when: true
+
+- name: 6) Terraform init/plan/apply (avec AppRole)
+  hosts: bastion
+  gather_facts: false
+  vars:
+    terraform_dir: "/root/nudger-infra/terraform/xwiki"
+    vault_addr: "http://127.0.0.1:8200"
+  tasks:
+    - name: Exécuter Terraform pipeline
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd {{ terraform_dir }}
+        terraform init -reconfigure
+        terraform plan -out tfplan.out
+        terraform apply -auto-approve tfplan.out
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+      changed_when: true

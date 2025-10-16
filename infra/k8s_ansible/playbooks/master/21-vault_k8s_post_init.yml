@@ -58,6 +58,17 @@
         vault_root_token: "{{ (vault_init.stdout | from_json).root_token }}"
       when: vault_status.stdout is not search("Initialized.*true")
 
+    - name: Exporter le root_token pour Terraform
+      ansible.builtin.command: >
+        jq -r '.root_token' {{ artifact_dir }}/vault-k8s-init.json
+      register: vault_root_token_extract
+      changed_when: true
+
+    - name: Sauvegarder le root_token dans un fichier texte pour Terraform
+      ansible.builtin.copy:
+        dest: "{{ artifact_dir }}/vault-root-token.txt"
+        content: "{{ vault_root_token_extract.stdout }}"
+        mode: "0600"
     - name: Déverrouiller Vault
       ansible.builtin.command: >
         kubectl exec -n {{ namespace }} {{ vault_pod.stdout }} --
