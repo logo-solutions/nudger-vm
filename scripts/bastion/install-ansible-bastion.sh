@@ -23,6 +23,13 @@ apt-get install -y --no-install-recommends \
   python3 python3-venv python3-pip python3-dev build-essential \
   ruby ruby-dev ca-certificates
 
+cd /tmp
+wget https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip
+unzip terraform_1.9.8_linux_amd64.zip
+mv terraform /usr/local/bin/
+chmod +x /usr/local/bin/terraform
+terraform version
+cd -
 # --- hcloud CLI (idempotent)
 if ! command -v hcloud >/dev/null 2>&1; then
   log "Installation hcloud CLI"

@@ -12,16 +12,20 @@
       kubernetes.core.helm_repository:
         name: hashicorp
         repo_url: "{{ helm_repo }}"
-
     - name: Déployer Vault (standalone)
       kubernetes.core.helm:
         name: "{{ helm_chart_name }}"
         chart_ref: hashicorp/vault
         release_namespace: "{{ vault_namespace }}"
         create_namespace: true
+        wait: true
         values:
           server:
             ha:
+              enabled: false
+            dataStorage:
+              enabled: false       # 🔥 désactive le PVC pour mode en mémoire
+            dev:
               enabled: false
           injector:
             enabled: true

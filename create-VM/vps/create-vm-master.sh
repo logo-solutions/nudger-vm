@@ -69,16 +69,78 @@ done
 
 # ── Prechecks ──────────────────────────────────────────────────────────────
 need hcloud; need jq; need ssh-keygen; need awk
+# ── Clé SSH locale : récupération depuis Bitwarden si absente ──────────────
+if [[ ! -f "$KEY_PATH" || ! -f "$KEY_PUB" ]]; then
+  log "Clé SSH absente, tentative de récupération depuis Bitwarden…"
+  export BW_SESSION="${BW_SESSION:-$(bw unlock --raw 2>/dev/null)}"
+
+  # Récupérer la clé privée
+  PRIV_KEY=$(bw get item cle_privee_hetzner | jq -r '.login.password' 2>/dev/null)
+  if [[ -z "$PRIV_KEY" || "$PRIV_KEY" == "null" ]]; then
+    err "Impossible de récupérer la clé privée dans Bitwarden (item: cle_privee_hetzner)"
+    exit 1
+  fi
+
+  # Création du dossier ~/.ssh si besoin
+  mkdir -p "$(dirname "$KEY_PATH")"
+  chmod 700 "$(dirname "$KEY_PATH")"
+
+  # Sauvegarde et permissions
+  echo "$PRIV_KEY" > "$KEY_PATH"
+  chmod 600 "$KEY_PATH"
+
+  # Génération de la clé publique si absente
+  if [[ ! -f "$KEY_PUB" ]]; then
+    ssh-keygen -y -f "$KEY_PATH" > "$KEY_PUB"
+  fi
+
+  ok "Clé SSH restaurée depuis Bitwarden : $KEY_PATH"
+fi
 [[ -f "$KEY_PATH" && -f "$KEY_PUB" ]] || { err "Clé locale manquante: $KEY_PATH(.pub)"; exit 1; }
 
 # Contexte Hetzner
 if ! hcloud context active >/dev/null 2>&1; then
-  [[ -n "${HCLOUD_TOKEN:-}" ]] || { err "Pas de contexte actif et HCLOUD_TOKEN absent (-t TOKEN)."; exit 1; }
-  log "Création du contexte '$CONTEXT' (non-interactif)"
-  echo y | hcloud context create "$CONTEXT" >/dev/null 2>&1 || true
-  hcloud context use "$CONTEXT"
+  # Si la variable HCLOUD_TOKEN n'est pas définie, on va la chercher dans Bitwarden
+# ── Authentification Hetzner via Bitwarden ───────────────
+if [[ -z "${HCLOUD_TOKEN:-}" ]]; then
+  log "HCLOUD_TOKEN absent, tentative de récupération depuis Bitwarden..."
+  export BW_SESSION="${BW_SESSION:-$(bw unlock --raw 2>/dev/null)}"
+  HCLOUD_TOKEN=$(bw get item token_hcloud_bastion | jq -r '.login.password' 2>/dev/null)
+  if [[ -z "$HCLOUD_TOKEN" || "$HCLOUD_TOKEN" == "null" ]]; then
+    err "Impossible de récupérer le token dans Bitwarden (item: token_hcloud_bastion)"
+    exit 1
+  fi
+  export HCLOUD_TOKEN
 fi
-ok "Contexte actif: $(hcloud context active || echo 'n/a')"
+
+ok "Authentification Hetzner OK (token chargé depuis Bitwarden)"
+  log "Création du contexte '$CONTEXT' (non-interactif)"
+  # Supprime si existe déjà pour éviter doublons silencieux
+  hcloud context delete "$CONTEXT" -f >/dev/null 2>&1 || true
+  echo y | hcloud context create "$CONTEXT" --token "$HCLOUD_TOKEN" >/dev/null 2>&1 || true
+  hcloud context use "$CONTEXT" >/dev/null 2>&1 || true
+
+  # 🧠 Force le token pour le process courant (certaines versions du CLI ne relisent pas immédiatement la config)
+  export HCLOUD_TOKEN
+fi
+
+# Double vérif : s'il reste vide, on recharge le token depuis le contexte actif
+if [[ -z "${HCLOUD_TOKEN:-}" ]]; then
+  HCLOUD_TOKEN=$(awk -v ctx="$CONTEXT" '
+  $1 == "[context \""ctx"\"]" {found=1; next}
+  found && $1 == "token" {print $3; exit}
+' ~/.config/hcloud/cli.toml 2>/dev/null)
+export HCLOUD_TOKEN
+fi
+
+# Validation
+if ! hcloud context active >/dev/null 2>&1; then
+  err "Le contexte Hetzner '$CONTEXT' n'a pas pu être activé. Vérifie ton token."
+  exit 1
+fi
+
+ok "Contexte actif: $(hcloud context active)"
+
 
 # Assurer la clé Hetzner si SSH_KEY_ID non fourni
 if [[ -z "$SSH_KEY_ID" ]]; then
