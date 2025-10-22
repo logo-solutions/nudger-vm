@@ -1,0 +1,123 @@
+---
+# 23-vault_create_approle_terraform.yml
+# Crée une policy + un AppRole "terraform" dans Vault (Kubernetes)
+# et exporte les artefacts (role_id / secret_id) dans /root/.ansible/artifacts/master1/
+
+- name: Créer l’AppRole Terraform dans Vault
+  hosts: bastion
+  become: true
+  gather_facts: true
+  vars:
+    namespace: vault
+    vault_addr: "http://127.0.0.1:8200"
+    artifact_dir: "/root/.ansible/artifacts/master1"
+    vault_token_file: "{{ artifact_dir }}/vault-root-token.txt"
+    vault_token: "{{ lookup('file', vault_token_file) | trim }}"
+
+  pre_tasks:
+    - name: 🕓 Attendre que le pod Vault soit prêt
+      ansible.builtin.command: >
+        kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=vault -n vault --timeout=120s
+      changed_when: false
+
+    - name: Vérifier si le port-forward vers Vault est déjà actif
+      ansible.builtin.shell: ss -tln | grep -q ":8200"
+      register: vault_portforward_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: (Re)démarrer le port-forward vers Vault uniquement si nécessaire
+      ansible.builtin.shell: |
+        if ! ss -tln | grep -q ":8200"; then
+          echo "🚀 Démarrage du port-forward vers Vault..."
+          pkill -f "kubectl port-forward -n vault" || true
+          nohup bash -c 'setsid kubectl port-forward -n vault svc/vault 8200:8200 \
+            >/tmp/vault-forward.log 2>&1 < /dev/null &' >/dev/null 2>&1
+          sleep 5
+          if ss -tln | grep -q ":8200"; then
+            echo "✅ Port-forward actif sur 127.0.0.1:8200"
+          else
+            echo "❌ kubectl port-forward n’a pas démarré correctement !"
+            exit 1
+          fi
+        else
+          echo "ℹ️ Port-forward déjà actif sur 127.0.0.1:8200"
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Vérifier que Vault est accessible
+      ansible.builtin.shell: |
+        curl -fsSL {{ vault_addr }}/v1/sys/health | jq .
+      register: vault_health
+      changed_when: false
+
+    - name: Vérifier que le token utilisé est root (garde-fou)
+      ansible.builtin.shell: |
+        vault token lookup -format=json | jq -r '.data.policies[]'
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      register: vault_policies
+      changed_when: false
+      failed_when: vault_policies.rc != 0
+
+    - name: Échec si le token n’est pas root
+      ansible.builtin.fail:
+        msg: |
+          ❌ Token invalide ou non-root.
+          - Sortie lookup : {{ vault_policies.stdout | default('vide') }}
+          - Vérifie le port-forward (kubectl port-forward -n vault svc/vault 8200:8200)
+      when: "'root' not in vault_policies.stdout"
+
+  tasks:
+    - name: 🔐 Créer ou mettre à jour la policy "terraform" (KV v2)
+      ansible.builtin.shell: |
+        cat <<'EOF' | env VAULT_ADDR={{ vault_addr }} VAULT_TOKEN={{ vault_token }} vault policy write terraform -
+        # Accès lecture/list sur les secrets KV v2
+        path "secret/data/*" {
+          capabilities = ["read", "list"]
+        }
+
+        # Accès pour lire la métadonnée KV v2
+        path "secret/metadata/*" {
+          capabilities = ["read", "list"]
+        }
+        EOF
+      changed_when: true
+
+    - name: Activer auth approle (idempotent)
+      ansible.builtin.shell: |
+        env VAULT_ADDR={{ vault_addr }} VAULT_TOKEN={{ vault_token }} vault auth enable approle || true
+      changed_when: false
+
+    - name: Créer AppRole terraform
+      ansible.builtin.shell: |
+        env VAULT_ADDR={{ vault_addr }} VAULT_TOKEN={{ vault_token }} vault write auth/approle/role/terraform \
+          token_policies="terraform" \
+          token_ttl=1h token_max_ttl=4h
+      changed_when: true
+
+    - name: Récupérer RoleID et SecretID
+      ansible.builtin.shell: |
+        ROLE_ID=$(vault read -field=role_id auth/approle/role/terraform/role-id)
+        SECRET_ID=$(vault write -f -field=secret_id auth/approle/role/terraform/secret-id)
+        echo "{\"role_id\":\"$ROLE_ID\",\"secret_id\":\"$SECRET_ID\"}" > {{ artifact_dir }}/vault-terraform-approle.json
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      changed_when: true
+
+  post_tasks:
+    - name: Vérifier export JSON
+      ansible.builtin.stat:
+        path: "{{ artifact_dir }}/vault-terraform-approle.json"
+      register: approle_stat
+
+    - name: Afficher résultat
+      ansible.builtin.debug:
+        msg: |
+          ✅ AppRole Terraform créé ou mis à jour avec succès.
+          📦 Fichier: {{ artifact_dir }}/vault-terraform-approle.json
+      when: approle_stat.stat.exists

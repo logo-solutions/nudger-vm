@@ -1,0 +1,106 @@
+# playbooks/master/21-vault_k8s_post_init.yml
+# 🚀 Initialise et déverrouille le Vault déployé dans Kubernetes
+# ⚙️  À exécuter depuis le bastion (kubectl configuré)
+# 🔒  Sauvegarde root_token et unseal_key dans ~/.ansible/artifacts/master1/vault-k8s-init.json
+
+- name: Initialiser et déverrouiller Vault Kubernetes
+  hosts: bastion
+  become: true
+  vars:
+    namespace: "vault"
+    artifact_dir: "/root/.ansible/artifacts/master1"
+    artifact_file: "{{ artifact_dir }}/vault-k8s-init.json"
+
+  tasks:
+    - name: Créer le dossier artefact s’il n’existe pas
+      ansible.builtin.file:
+        path: "{{ artifact_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Initialiser la variable vault_init pour éviter les erreurs "undefined"
+      ansible.builtin.set_fact:
+        vault_init: {}
+
+    - name: Récupérer le nom du pod Vault
+      ansible.builtin.command: >
+        kubectl get pods -n {{ namespace }}
+        -l app.kubernetes.io/name=vault
+        -o jsonpath='{.items[0].metadata.name}'
+      register: vault_pod
+      changed_when: false
+
+    - name: Vérifier si Vault est déjà initialisé
+      ansible.builtin.command: >
+        kubectl exec -n {{ namespace }} {{ vault_pod.stdout }} -- vault status
+      register: vault_status
+      changed_when: false
+      failed_when: false
+
+    - name: Interrompre si Vault déjà initialisé
+      ansible.builtin.debug:
+        msg: "✅ Vault Kubernetes déjà initialisé."
+      when: vault_status.stdout is search("Initialized.*true")
+
+    - name: Initialiser Vault Kubernetes (si non initialisé)
+      ansible.builtin.command: >
+        kubectl exec -n {{ namespace }} {{ vault_pod.stdout }} --
+        vault operator init -key-shares=1 -key-threshold=1 -format=json
+      register: vault_init
+      when: vault_status.stdout is not search("Initialized.*true")
+
+    - name: Sauvegarder les artefacts Vault (root_token + unseal_key)
+      when: vault_init.stdout is defined and vault_init.stdout | length > 0
+      ansible.builtin.copy:
+        content: "{{ vault_init.stdout }}"
+        dest: "{{ artifact_file }}"
+        mode: "0600"
+
+    - name: Extraire root_token et unseal_key si Vault vient d’être initialisé
+      when: vault_init.stdout is defined and vault_init.stdout | length > 0
+      ansible.builtin.set_fact:
+        vault_unseal_key: "{{ (vault_init.stdout | from_json).unseal_keys_b64[0] }}"
+        vault_root_token: "{{ (vault_init.stdout | from_json).root_token }}"
+
+    - name: Exporter le root_token pour Terraform
+      ansible.builtin.command: >
+        jq -r '.root_token' {{ artifact_file }}
+      register: vault_root_token_extract
+      changed_when: true
+      failed_when: vault_root_token_extract.rc != 0
+
+    - name: Sauvegarder le root_token dans un fichier texte pour Terraform
+      ansible.builtin.copy:
+        dest: "{{ artifact_dir }}/vault-root-token.txt"
+        content: "{{ vault_root_token_extract.stdout }}"
+        mode: "0600"
+
+    - name: Déverrouiller Vault (si clé disponible)
+      when: vault_unseal_key is defined
+      ansible.builtin.command: >
+        kubectl exec -n {{ namespace }} {{ vault_pod.stdout }} --
+        vault operator unseal {{ vault_unseal_key }}
+
+    - name: Vérifier l’état final du Vault
+      ansible.builtin.command: >
+        kubectl exec -n {{ namespace }} {{ vault_pod.stdout }} -- vault status
+      register: vault_final_status
+      changed_when: false
+
+    - name: Afficher le statut final
+      ansible.builtin.debug:
+        msg: "{{ vault_final_status.stdout_lines }}"
+
+    - name: Afficher les tokens tronqués (sécurité)
+      when: vault_unseal_key is defined and vault_root_token is defined
+      ansible.builtin.debug:
+        msg:
+          - "Root token: {{ vault_root_token[:8] | default('N/A') }}..."
+          - "Unseal key: {{ vault_unseal_key[:8] | default('N/A') }}..."
+
+    - name: Rappel de sécurité
+      ansible.builtin.debug:
+        msg: >
+          📤 Transfère immédiatement le root_token et la unseal_key
+          dans Bitwarden (collection 'Vault Kubernetes Root / Unseal Keys'),
+          puis supprime {{ artifact_file }} si nécessaire.

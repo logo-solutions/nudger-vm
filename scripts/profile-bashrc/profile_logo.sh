@@ -18,7 +18,7 @@ if command -v kubectl >/dev/null 2>&1; then
   alias k='kubectl'
   complete -o default -F __start_kubectl k
 fi
-source .bash_aliases
+source ~/nudger-vm/scripts/profile-bashrc/.bash_aliases
 # --- git minimal  helpers
 if command -v git >/dev/null 2>&1; then
   gpup() { git push -u origin "$(git branch --show-current)"; }

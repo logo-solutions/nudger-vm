@@ -28,7 +28,6 @@ création de la clé privée et publique de hetzner
 - Exécuter :
   ```bash
     AUTO_COMMIT=1 \                          
-     HCLOUD_TOKEN="$HCLOUD_TOKEN" \
      KEY_NAME=hetzner-bastion \
      KEY_PATH="$HOME/.ssh/hetzner-bastion" \
      ./create-VM/vps/create-vm-bastion.sh --recreate
@@ -86,6 +85,7 @@ création de la clé privée et publique de hetzner
 - Depuis le Bastion, Ansible/SSH se connecte au Master via la clé Bastion.
 - Lancer :
   ```bash
+  ./scripts/master/install-ansible-master.sh
   ./scripts/master/post-install-master.sh
   ```
 - Ce script configure :
