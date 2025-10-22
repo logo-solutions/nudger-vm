@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# walkcat.sh — liste et affiche certains fichiers (YAML + scripts shell)
+# walkcat.sh — liste et affiche certains fichiers (YAML, MD, TF, et scripts shell)
 # Usage: ./walkcat.sh [DIR]
 # Options via variables d'env :
 #   SKIP_BINARY=1  # (défaut) saute les binaires
@@ -15,10 +15,10 @@ if ! command -v find >/dev/null; then
   echo "find est requis"; exit 1
 fi
 
-# Recherche : *.yml, *.yaml, *.sh
+# Recherche : *.yml, *.yaml, *.sh, *.md, *.tf
 find "$DIR" \
   -type d \( -name dump -o -name third_party \) -prune -o \
-  -type f \( -name "*.yml" -o -name "*.yaml" -o -name "*.sh" \) -print0 |
+  -type f \( -name "*.yml" -o -name "*.yaml" -o -name "*.sh" -o -name "*.md" -o -name "*.tf" \) -print0 |
 while IFS= read -r -d '' f; do
   echo "===== $f ====="
   if [[ "$SKIP_BINARY" == "1" ]]; then

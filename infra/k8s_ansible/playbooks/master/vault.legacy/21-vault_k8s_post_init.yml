@@ -1,5 +1,4 @@
----
-# playbooks/vault/vault_k8s_post_init.yml
+# playbooks/master/21-vault_k8s_post_init.yml
 # 🚀 Initialise et déverrouille le Vault déployé dans Kubernetes
 # ⚙️  À exécuter depuis le bastion (kubectl configuré)
 # 🔒  Sauvegarde root_token et unseal_key dans ~/.ansible/artifacts/master1/vault-k8s-init.json
@@ -18,6 +17,10 @@
         path: "{{ artifact_dir }}"
         state: directory
         mode: "0700"
+
+    - name: Initialiser la variable vault_init pour éviter les erreurs "undefined"
+      ansible.builtin.set_fact:
+        vault_init: {}
 
     - name: Récupérer le nom du pod Vault
       ansible.builtin.command: >
@@ -39,7 +42,7 @@
         msg: "✅ Vault Kubernetes déjà initialisé."
       when: vault_status.stdout is search("Initialized.*true")
 
-    - name: Initialiser Vault Kubernetes
+    - name: Initialiser Vault Kubernetes (si non initialisé)
       ansible.builtin.command: >
         kubectl exec -n {{ namespace }} {{ vault_pod.stdout }} --
         vault operator init -key-shares=1 -key-threshold=1 -format=json
@@ -47,33 +50,36 @@
       when: vault_status.stdout is not search("Initialized.*true")
 
     - name: Sauvegarder les artefacts Vault (root_token + unseal_key)
+      when: vault_init.stdout is defined and vault_init.stdout | length > 0
       ansible.builtin.copy:
         content: "{{ vault_init.stdout }}"
         dest: "{{ artifact_file }}"
         mode: "0600"
 
-    - name: Extraire root_token et unseal_key
+    - name: Extraire root_token et unseal_key si Vault vient d’être initialisé
+      when: vault_init.stdout is defined and vault_init.stdout | length > 0
       ansible.builtin.set_fact:
         vault_unseal_key: "{{ (vault_init.stdout | from_json).unseal_keys_b64[0] }}"
         vault_root_token: "{{ (vault_init.stdout | from_json).root_token }}"
-      when: vault_status.stdout is not search("Initialized.*true")
 
     - name: Exporter le root_token pour Terraform
       ansible.builtin.command: >
-        jq -r '.root_token' {{ artifact_dir }}/vault-k8s-init.json
+        jq -r '.root_token' {{ artifact_file }}
       register: vault_root_token_extract
       changed_when: true
+      failed_when: vault_root_token_extract.rc != 0
 
     - name: Sauvegarder le root_token dans un fichier texte pour Terraform
       ansible.builtin.copy:
         dest: "{{ artifact_dir }}/vault-root-token.txt"
         content: "{{ vault_root_token_extract.stdout }}"
         mode: "0600"
-    - name: Déverrouiller Vault
+
+    - name: Déverrouiller Vault (si clé disponible)
+      when: vault_unseal_key is defined
       ansible.builtin.command: >
         kubectl exec -n {{ namespace }} {{ vault_pod.stdout }} --
         vault operator unseal {{ vault_unseal_key }}
-      when: vault_status.stdout is not search("Initialized.*true")
 
     - name: Vérifier l’état final du Vault
       ansible.builtin.command: >
@@ -86,11 +92,11 @@
         msg: "{{ vault_final_status.stdout_lines }}"
 
     - name: Afficher les tokens tronqués (sécurité)
+      when: vault_unseal_key is defined and vault_root_token is defined
       ansible.builtin.debug:
         msg:
           - "Root token: {{ vault_root_token[:8] | default('N/A') }}..."
           - "Unseal key: {{ vault_unseal_key[:8] | default('N/A') }}..."
-      when: vault_status.stdout is not search("Initialized.*true")
 
     - name: Rappel de sécurité
       ansible.builtin.debug:

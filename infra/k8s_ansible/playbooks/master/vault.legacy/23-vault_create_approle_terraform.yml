@@ -12,7 +12,7 @@
     vault_addr: "http://127.0.0.1:8200"
     artifact_dir: "/root/.ansible/artifacts/master1"
     vault_token_file: "{{ artifact_dir }}/vault-root-token.txt"
-    vault_token: "{{ lookup('env', 'VAULT_TOKEN') | default(lookup('file', vault_token_file) | trim) }}"
+    vault_token: "{{ lookup('file', vault_token_file) | trim }}"
 
   pre_tasks:
     - name: 🕓 Attendre que le pod Vault soit prêt
@@ -46,6 +46,7 @@
       args:
         executable: /bin/bash
       changed_when: false
+
     - name: Vérifier que Vault est accessible
       ansible.builtin.shell: |
         curl -fsSL {{ vault_addr }}/v1/sys/health | jq .
@@ -71,10 +72,16 @@
       when: "'root' not in vault_policies.stdout"
 
   tasks:
-    - name: Créer la policy "terraform"
+    - name: 🔐 Créer ou mettre à jour la policy "terraform" (KV v2)
       ansible.builtin.shell: |
         cat <<'EOF' | env VAULT_ADDR={{ vault_addr }} VAULT_TOKEN={{ vault_token }} vault policy write terraform -
-        path "secret/*" {
+        # Accès lecture/list sur les secrets KV v2
+        path "secret/data/*" {
+          capabilities = ["read", "list"]
+        }
+
+        # Accès pour lire la métadonnée KV v2
+        path "secret/metadata/*" {
           capabilities = ["read", "list"]
         }
         EOF
@@ -111,6 +118,6 @@
     - name: Afficher résultat
       ansible.builtin.debug:
         msg: |
-          ✅ AppRole Terraform créé.
+          ✅ AppRole Terraform créé ou mis à jour avec succès.
           📦 Fichier: {{ artifact_dir }}/vault-terraform-approle.json
       when: approle_stat.stat.exists
