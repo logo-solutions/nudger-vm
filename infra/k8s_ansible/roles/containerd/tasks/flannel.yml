@@ -118,6 +118,8 @@
     exit 1
   args: { executable: /bin/bash }
   register: flannel_apply
+  retries: 5
+  delay: 10
   changed_when: "'created' in flannel_apply.stdout or 'configured' in flannel_apply.stdout"
   become: true
   when: inventory_hostname == groups['k8s_masters'][0]

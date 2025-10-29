@@ -46,6 +46,53 @@
     - inventory_hostname == groups['k8s_masters'][0]
     - not kubeadm_config.stat.exists
   become: true
+# --- Pause courte pour laisser kubeadm finaliser les manifests ---
+- name: Wait a few seconds for kubeadm to flush manifests
+  ansible.builtin.pause:
+    seconds: 15
+  when: inventory_hostname == groups['k8s_masters'][0]
+# --- Validation statique des manifests avec auto-réparation ---
+- name: Check static pod manifests validity
+  ansible.builtin.shell: |
+    for f in /etc/kubernetes/manifests/*.yaml; do
+      if ! yq eval '.' "$f" >/dev/null 2>&1; then
+        echo "Invalid YAML: $f"
+        exit 1
+      fi
+    done
+  args: { executable: /bin/bash }
+  register: manifest_check
+  changed_when: false
+  failed_when: false
+  retries: 5
+  delay: 5
+  until: manifest_check.rc == 0
+  become: true
+  when: inventory_hostname == groups['k8s_masters'][0]
+
+# --- Régénération auto du manifest etcd si invalid ---
+- name: Regenerate etcd manifest if invalid
+  ansible.builtin.command: kubeadm init phase etcd local --config=/root/kubeadm-config.yaml
+  become: true
+  when:
+    - inventory_hostname == groups['k8s_masters'][0]
+    - manifest_check.stdout is search('Invalid YAML: /etc/kubernetes/manifests/etcd.yaml')
+
+- name: Check static pod manifests validity
+  ansible.builtin.shell: |
+    for f in /etc/kubernetes/manifests/*.yaml; do
+      if ! yq eval '.' "$f" >/dev/null 2>&1; then
+        echo "Invalid YAML: $f"
+        exit 1
+      fi
+    done
+  args: { executable: /bin/bash }
+  register: manifest_check
+  changed_when: false
+  failed_when: manifest_check.rc != 0
+  become: true
+  when: inventory_hostname == groups['k8s_masters'][0]
+
 # --- ICI : juste après "Render kubeadm config" ---
 - name: Stat kube-apiserver manifest
   ansible.builtin.stat:

@@ -38,3 +38,6 @@
   tags: [github, ssh]
 - import_tasks: 60_starship.yml
   tags: [starship, shell]
+- name: 65 | kubectl install on bastion (if missing)
+  ansible.builtin.include_tasks: 65_kubectl_bastion.yml
+  tags: [kubectl, bastion]
