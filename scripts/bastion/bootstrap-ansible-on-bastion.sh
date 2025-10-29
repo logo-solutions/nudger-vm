@@ -30,6 +30,20 @@ mv terraform /usr/local/bin/
 chmod +x /usr/local/bin/terraform
 terraform version
 cd -
+# Nettoyage ancien binaire
+rm -f /usr/local/bin/bw
+
+# Téléchargement de la dernière version stable (ZIP)
+curl -L "https://vault.bitwarden.com/download/?app=cli&platform=linux" -o /tmp/bw.zip
+
+# Décompression du binaire
+unzip -o /tmp/bw.zip -d /usr/local/bin/
+
+# Donner les droits d’exécution
+chmod +x /usr/local/bin/bw
+
+# Vérification
+/usr/local/bin/bw --version
 # --- hcloud CLI (idempotent)
 if ! command -v hcloud >/dev/null 2>&1; then
   log "Installation hcloud CLI"
