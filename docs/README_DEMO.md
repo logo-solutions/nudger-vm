@@ -24,4 +24,5 @@ bw login
 export BW_SESSION=$(bw unlock --raw)
 
 /root/nudger-vm/create-VM/vps/create-vm-master.sh 
+ssh -i ~/.ssh/hetzner-bastion root@91.98.16.184 'bash -s' < ~/nudger-vm/scripts/master/bootstrap-ansible-control-plane.sh
 /root/nudger-vm/scripts/master/configure-k8s-master.sh
