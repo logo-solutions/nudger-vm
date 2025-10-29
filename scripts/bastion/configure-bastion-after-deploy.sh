@@ -77,10 +77,13 @@ else
 fi
 
 ### -------- Installation Ansible --------
-log "Installation Ansible (script projet)"
-ensure_file "$REPO_ROOT/scripts/bastion/install-ansible-bastion.sh" "Script Ansible manquant"
-bash "$REPO_ROOT/scripts/bastion/install-ansible-bastion.sh"
-ok "Ansible installé."
+### -------- Vérification du venv Ansible --------
+log "Vérification du venv Ansible"
+if [[ ! -f "/root/ansible_venv/bin/activate" ]]; then
+  err "Le venv Ansible est manquant. Exécute d'abord : scripts/bastion/bootstrap-ansible-on-bastion.sh"
+fi
+ok "venv Ansible présent."
+
 
 ### -------- Activation venv + Playbooks --------
 log "Activation venv et exécution playbooks..."
