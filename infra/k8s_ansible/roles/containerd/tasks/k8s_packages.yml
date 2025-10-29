@@ -92,9 +92,3 @@
     enabled: true
     state: restarted
   become: true
-- name: Wait for kubelet service active (non-blocking before kubeadm)
-  ansible.builtin.shell: systemctl is-active --quiet kubelet || systemctl status kubelet -n 10
-  register: kubelet_check
-  changed_when: false
-  failed_when: false
-  tags: [kubelet]

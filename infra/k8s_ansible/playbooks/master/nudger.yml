@@ -9,5 +9,3 @@
   import_playbook: 03-kubernetes.yml
 - name: 03-B-k8s-users.yml
   import_playbook: 03-B-k8s-users.yml
-- name: 19-sync_kubeconfig.yml
-  import_playbook: 19-sync_kubeconfig.yml

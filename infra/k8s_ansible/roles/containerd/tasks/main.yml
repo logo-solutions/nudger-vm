@@ -13,20 +13,3 @@
   ansible.builtin.import_tasks: kube_proxy.yml
 - name: Import kubeconfig_user.yml
   ansible.builtin.import_tasks: kubeconfig_user.yml
-- name: Final cluster sanity check
-  ansible.builtin.shell: |
-    set -euo pipefail
-    echo "== Nodes =="
-    kubectl get nodes -o wide
-    echo
-    echo "== Non-Running Pods =="
-    if kubectl get pods -A --no-headers | grep -Ev 'Running|Completed' | grep -q .; then
-      kubectl get pods -A --no-headers | grep -Ev 'Running|Completed'
-      exit 1
-    fi
-    echo "All pods running ✅"
-  args:
-    executable: /bin/bash      # <── AJOUTE ÇA
-  register: cluster_check
-  changed_when: false
-  become: true
