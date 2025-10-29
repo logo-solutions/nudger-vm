@@ -67,12 +67,14 @@ deb [signed-by=/etc/apt/keyrings/hashicorp-archive-keyring.gpg] https://apt.rele
 EOF
 
 # 5️⃣ Mettre à jour le cache APT et installer Terraform
+# 1️⃣ Mise à jour des paquets
 apt_retry update
+
+# 2️⃣ Installation de Terraform
 apt_retry install -y terraform
 
-# 6️⃣ Installer Helm via snap
+# 3️⃣ Installer Helm via Snap
 snap install helm --classic
-
 # ─────────────────── yq (binaire statique) ───────────────────
 if ! command -v yq >/dev/null 2>&1; then
   log "Installation de yq (binaire GitHub officiel)"
