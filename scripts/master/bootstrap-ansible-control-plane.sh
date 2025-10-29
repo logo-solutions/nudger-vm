@@ -53,6 +53,11 @@ apt_retry install -y terraform
 snap install helm --classic
 
 ok "Base système OK"
+apt-get update -y
+apt-get install -y wget
+wget https://github.com/mikefarah/yq/releases/download/v4.44.2/yq_linux_amd64 -O /usr/local/bin/yq
+chmod +x /usr/local/bin/yq
+yq --version
 
 # ─────────────────── hcloud CLI (idempotent) ───────────────────
 if ! command -v hcloud >/dev/null 2>&1; then
