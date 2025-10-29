@@ -100,39 +100,4 @@ ensure_file "inventory.ini" "inventory.ini introuvable"
 ansible-playbook -i inventory.ini playbooks/bastion/site.bastion.yml
 ok "site.bastion.yml OK"
 
-ansible-playbook -i inventory.ini playbooks/bastion/007a-install-init-vault.yml
-ok "007a-install-init-vault.yml OK"
-
-### -------- Vault: récupérer le token + seed --------
-log "Configuration VAULT_ADDR"
-export VAULT_ADDR="http://127.0.0.1:8200"
-
-ART1="/root/.ansible/artifacts/bastion/vault-init.json"
-ART2="/root/.ansible/artifacts/bastion_host/vault-init.json"
-VAULT_INIT_JSON=""
-[[ -f "$ART1" ]] && VAULT_INIT_JSON="$ART1"
-[[ -z "$VAULT_INIT_JSON" && -f "$ART2" ]] && VAULT_INIT_JSON="$ART2"
-[[ -n "$VAULT_INIT_JSON" ]] || err "vault-init.json introuvable (cherché: $ART1 | $ART2)"
-
-log "Export du VAULT_TOKEN"
-export VAULT_TOKEN
-VAULT_TOKEN="$(jq -r '.root_token // empty' "$VAULT_INIT_JSON")"
-[[ -n "$VAULT_TOKEN" && "$VAULT_TOKEN" != "null" ]] || err "root_token absent dans $VAULT_INIT_JSON"
-ok "Token chargé (******)"
-
-VAULT_ADDR="$VAULT_ADDR" VAULT_TOKEN="$VAULT_TOKEN" vault token lookup >/dev/null || err "Échec validation du token Vault"
-ok "Token valide"
-
-log "Activation KV v2 sur 'secret' (idempotent)"
-VAULT_ADDR="$VAULT_ADDR" VAULT_TOKEN="$VAULT_TOKEN" vault secrets enable -path=secret kv-v2 >/dev/null 2>&1 || true
-ok "KV v2 prêt"
-
-if [[ -f "playbooks/bastion/007b-seed-vault.yml" ]]; then
-  log "Execution 007b-seed-vault.yml"
-  ansible-playbook -i inventory.ini playbooks/bastion/007b-seed-vault.yml
-  ok "007b-seed-vault.yml OK"
-else
-  log "playbooks/bastion/007b-seed-vault.yml introuvable (on continue)."
-fi
-
 ok "Post-install terminé."
