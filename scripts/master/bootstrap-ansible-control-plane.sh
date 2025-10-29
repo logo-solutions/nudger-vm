@@ -43,14 +43,36 @@ apt_retry install -y --no-install-recommends \
   software-properties-common \
   snapd
 
-curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
-  > /etc/apt/sources.list.d/hashicorp.list
-
+log "Ajout du dépôt HashiCorp"
+mkdir -p /usr/share/keyrings
+# Supprime le fichier s’il est corrompu ou vide
+if [ -f /usr/share/keyrings/hashicorp-archive-keyring.gpg ] && [ ! -s /usr/share/keyrings/hashicorp-archive-keyring.gpg ]; then
+  rm -f /usr/share/keyrings/hashicorp-archive-keyring.gpg
+fi
+curl -fsSL https://apt.releases.hashicorp.com/gpg | \
+  gpg --dearmor --batch -o /usr/share/keyrings/hashicorp-archive-keyring.gpg || {
+    rm -f /usr/share/keyrings/hashicorp-archive-keyring.gpg
+    curl -fsSL https://apt.releases.hashicorp.com/gpg | \
+      gpg --dearmor --batch -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  }
 apt_retry update
 apt_retry install -y terraform
 snap install helm --classic
+# ─────────────────── yq (binaire statique) ───────────────────
+if ! command -v yq >/dev/null 2>&1; then
+  log "Installation de yq (binaire GitHub officiel)"
+  arch=$(uname -m)
+  case "$arch" in
+    x86_64) bin="yq_linux_amd64" ;;
+    aarch64|arm64) bin="yq_linux_arm64" ;;
+    *) err "Architecture non supportée: $arch" ;;
+  esac
+  curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/${bin}" -o /usr/local/bin/yq
+  chmod +x /usr/local/bin/yq
+  ok "yq installé: $(yq --version)"
+else
+  ok "yq déjà présent: $(yq --version)"
+fi
 
 ok "Base système OK"
 apt-get update -y

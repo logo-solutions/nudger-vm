@@ -8,10 +8,6 @@ else
   exit 1
 fi
 
-echo "👉 Installation Ansible sur master1 via bastion"
-ansible master1 -i ~/nudger-vm/infra/k8s_ansible/inventory.ini \
-  -m script -a "~/nudger-vm/scripts/master/bootstrap-ansible-control-plane.sh"
-
 echo "👉 Activation venv + lancement des playbooks depuis bastion"
 source ~/ansible_venv/bin/activate
 cd ~/nudger-vm/infra/k8s_ansible
