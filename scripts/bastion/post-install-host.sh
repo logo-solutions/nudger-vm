@@ -73,7 +73,31 @@ scp "${SSH_OPTS[@]}" "$HOME/.ssh/hetzner-bastion.pub" "${BASTION_USER}@${BASTION
 scp "${SSH_OPTS[@]}" "$HOME/.ssh/hetzner-bastion" "${BASTION_USER}@${BASTION_HOST}:/root/.ssh/hetzner-bastion"
 ssh "${SSH_OPTS[@]}" "${BASTION_USER}@${BASTION_HOST}" 'chmod 600 /root/.ssh/hetzner-bastion && chmod 644 /root/.ssh/hetzner-bastion.pub'
 ok "Clés SSH copiées sur le bastion."
+# ----- Copier la clé GitHub App vers le bastion -----
+info "Transfert de la clé GitHub App vers le bastion..."
 
+if [[ -f "/etc/github-app/nudger-vm.private-key.pem" ]]; then
+  warn "⚠️  Une clé GitHub App existe déjà localement, on l'utilise."
+else
+  # Exemple : récupération depuis Bitwarden si absente localement
+  info "Récupération de la clé GitHub App depuis Bitwarden..."
+  bw get item "cle_github_app" | jq -r '.notes' > /tmp/github-app-private-key.pem
+  ok "Clé GitHub App récupérée depuis Bitwarden."
+fi
+
+# Transfert vers le bastion
+scp "${SSH_OPTS[@]}" /tmp/github-app-private-key.pem "${BASTION_USER}@${BASTION_HOST}:/tmp/nudger-vm.private-key.pem"
+ok "Clé transférée sur le bastion (/tmp/nudger-vm.private-key.pem)"
+
+# Déplacement et sécurisation sur le bastion
+ssh "${SSH_OPTS[@]}" "${BASTION_USER}@${BASTION_HOST}" <<'EOF'
+sudo mkdir -p /etc/github-app
+sudo mv /tmp/nudger-vm.private-key.pem /etc/github-app/nudger-vm.private-key.pem
+sudo chown root:root /etc/github-app/nudger-vm.private-key.pem
+sudo chmod 600 /etc/github-app/nudger-vm.private-key.pem
+EOF
+
+ok "Clé GitHub App copiée et sécurisée sur le bastion (/etc/github-app/nudger-vm.private-key.pem)"
 # ----- Fin -----
 ok "Bastion prêt."
 echo

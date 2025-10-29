@@ -13,5 +13,7 @@ ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev
 ######## BASTION  ###########
 # lancer le git clone avec la sortie du script précedent
 /root/nudger-vm/scripts/bastion/post-install-vm-bastion.sh
+/root/nudger-vm/scripts/profile-bashrc/setup-bashrc.sh
+exec bash -l
 
 
