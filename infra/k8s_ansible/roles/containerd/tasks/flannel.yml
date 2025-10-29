@@ -84,6 +84,10 @@
   register: ns_yaml
   changed_when: false
   when: inventory_hostname == groups['k8s_masters'][0]
+- name: Debug the content of the kube-flannel namespace YAML
+  ansible.builtin.debug:
+    var: ns_yaml.stdout
+  when: inventory_hostname == groups['k8s_masters'][0]
 
 - name: Apply kube-flannel namespace (idempotent)
   ansible.builtin.command:
@@ -95,34 +99,18 @@
   changed_when: "'created' in ns_apply.stdout or 'configured' in ns_apply.stdout"
   when: inventory_hostname == groups['k8s_masters'][0]
 
-# Flannel CNI install (after kubeadm init)
-- name: Apply Flannel CNI (use kubeconfig server, retries + readyz)
-  ansible.builtin.shell: |
-    set -euo pipefail
-    S="$(kubectl config view --kubeconfig="{{ containerd_kubeconfig_admin_path }}" --minify -o jsonpath='{.clusters[0].cluster.server}')"
-    H="$(printf '%s' "$S" | sed -E 's#^https?://##; s#:.*$##')"
 
-    for i in $(seq 1 10); do
-      if curl -sf --cacert /etc/kubernetes/pki/ca.crt \
-         --cert   /etc/kubernetes/pki/apiserver-kubelet-client.crt \
-         --key    /etc/kubernetes/pki/apiserver-kubelet-client.key \
-         "https://${H}:6443/readyz" >/dev/null 2>&1; then
-        if kubectl --kubeconfig "{{ containerd_kubeconfig_admin_path }}" \
-                   apply --validate=false \
-                   -f "{{ flannel_manifest_url }}"; then
-          exit 0
-        fi
-      fi
-      sleep 3
-    done
-    exit 1
-  args: { executable: /bin/bash }
-  register: flannel_apply
+# Flannel CNI install (after kubeadm init)
+- name: Apply kube-flannel namespace (idempotent, skip OpenAPI validation)
+  ansible.builtin.command:
+    cmd: >
+      kubectl apply -f "{{ ns_yaml.stdout }}" --validate=false
+  when: inventory_hostname == groups['k8s_masters'][0] 
+  register: ns_apply
   retries: 5
   delay: 10
-  changed_when: "'created' in flannel_apply.stdout or 'configured' in flannel_apply.stdout"
+  failed_when: ns_apply.rc != 0
   become: true
-  when: inventory_hostname == groups['k8s_masters'][0]
 
 - name: Wait for Flannel DaemonSet to be ready
   ansible.builtin.command: >
