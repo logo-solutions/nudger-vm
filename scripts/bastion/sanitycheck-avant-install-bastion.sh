@@ -31,7 +31,6 @@ done
     err "hcloud introuvable — installez-le puis relancezi (pour macos > brew install hcloud)"
   fi
 echo "bitwarden actif"
-export BW_SESSION=$(bw unlock --raw)
 # 2) Vérifier clé privée
 SSH_KEY="${HOME}/.ssh/hetzner-bastion"
 step "Vérification de la clé privée SSH (sert à te connecter au Bastion ensuite)"
