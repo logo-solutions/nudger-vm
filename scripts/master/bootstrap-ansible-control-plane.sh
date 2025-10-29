@@ -44,20 +44,35 @@ apt_retry install -y --no-install-recommends \
   snapd
 
 log "Ajout du dépôt HashiCorp"
-mkdir -p /usr/share/keyrings
-# Supprime le fichier s’il est corrompu ou vide
-if [ -f /usr/share/keyrings/hashicorp-archive-keyring.gpg ] && [ ! -s /usr/share/keyrings/hashicorp-archive-keyring.gpg ]; then
-  rm -f /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+# 1️⃣ Préparer le dossier keyrings
+mkdir -p /etc/apt/keyrings
+
+# 2️⃣ (Optionnel) Supprimer la clé si elle est vide/corrompue
+if [ -f /etc/apt/keyrings/hashicorp-archive-keyring.gpg ] && [ ! -s /etc/apt/keyrings/hashicorp-archive-keyring.gpg ]; then
+  rm -f /etc/apt/keyrings/hashicorp-archive-keyring.gpg
 fi
+
+# 3️⃣ Importer la clé GPG officielle HashiCorp (avec retry si besoin)
 curl -fsSL https://apt.releases.hashicorp.com/gpg | \
-  gpg --dearmor --batch -o /usr/share/keyrings/hashicorp-archive-keyring.gpg || {
-    rm -f /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  gpg --dearmor -o /etc/apt/keyrings/hashicorp-archive-keyring.gpg || {
+    rm -f /etc/apt/keyrings/hashicorp-archive-keyring.gpg
     curl -fsSL https://apt.releases.hashicorp.com/gpg | \
-      gpg --dearmor --batch -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      gpg --dearmor -o /etc/apt/keyrings/hashicorp-archive-keyring.gpg
   }
+
+# 4️⃣ Ajouter le dépôt HashiCorp pour Ubuntu (jammy = 22.04)
+cat >/etc/apt/sources.list.d/hashicorp.list <<'EOF'
+deb [signed-by=/etc/apt/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com jammy main
+EOF
+
+# 5️⃣ Mettre à jour le cache APT et installer Terraform
 apt_retry update
 apt_retry install -y terraform
+
+# 6️⃣ Installer Helm via snap
 snap install helm --classic
+
 # ─────────────────── yq (binaire statique) ───────────────────
 if ! command -v yq >/dev/null 2>&1; then
   log "Installation de yq (binaire GitHub officiel)"
