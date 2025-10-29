@@ -35,8 +35,11 @@ GITHUB_APP_KEY_PATH="${GITHUB_APP_KEY_PATH:-${1:-}}"
 ### -------- Préchecks outils (jq auto-install si absent) --------
 if ! command -v jq >/dev/null 2>&1; then
   echo "🔹 Installation jq (manquant)"
-  apt-get update -y && apt-get install -y jq
+  apt-get update -y && apt-get install -y jq 
 fi
+curl -L "https://vault.bitwarden.com/download/?app=cli&platform=linux" -o bw.zip
+unzip bw.zip -d /usr/local/bin/
+chmod +x /usr/local/bin/bw
 require_cmd jq
 require_cmd ssh-keygen
 require_cmd git
