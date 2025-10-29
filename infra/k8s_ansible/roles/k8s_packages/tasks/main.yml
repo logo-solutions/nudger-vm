@@ -1,0 +1,34 @@
+---
+# k8s_packages/tasks/main.yml
+- name: Install Kubernetes tools
+  ansible.builtin.apt:
+    name:
+      - kubeadm
+      - kubelet
+      - kubectl
+    state: present
+    update_cache: true
+  become: true
+  tags: [k8s_packages]
+
+- name: Ensure kubelet is running and enabled
+  ansible.builtin.systemd:
+    name: kubelet
+    state: started
+    enabled: true
+  become: true
+  tags: [k8s_packages]
+
+- name: Wait for kubelet to be running
+  ansible.builtin.shell: |
+    for i in $(seq 1 60); do
+      if systemctl is-active --quiet kubelet; then
+        exit 0
+      fi
+      sleep 2
+    done
+    echo "kubelet not running"; exit 1
+  become: true
+  register: kubelet_status
+  failed_when: kubelet_status.rc != 0
+  tags: [k8s_packages]

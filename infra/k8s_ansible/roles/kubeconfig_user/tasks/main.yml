@@ -1,0 +1,21 @@
+---
+# kubeconfig_user/tasks/main.yml
+- name: Copy admin kubeconfig to ansible user
+  ansible.builtin.copy:
+    src: "/etc/kubernetes/admin.conf"
+    dest: "/home/ansible/.kube/config"
+    remote_src: true
+    owner: ansible
+    group: ansible
+    mode: "0600"
+  become: true
+  tags: [kubeconfig_user]
+
+- name: Ensure KUBECONFIG in .bashrc
+  ansible.builtin.lineinfile:
+    path: "/home/ansible/.bashrc"
+    line: "export KUBECONFIG=$HOME/.kube/config"
+    create: yes
+    state: present
+  become: true
+  tags: [kubeconfig_user]

@@ -141,21 +141,22 @@
     apiserver_probe_hosts: "{{ [apiserver_probe_host, '127.0.0.1'] | unique }}"
   when: inventory_hostname == groups['k8s_masters'][0]
 # --- NEW: attendre l’écoute TCP 6443 avant de sonder /readyz ---
-- name: Wait for kube-apiserver to listen on :6443 (local socket)
+- name: Wait for kube-apiserver /readyz to return ok
   ansible.builtin.shell: |
-    for i in $(seq 1 180); do
-      if ss -ltn | awk '{print $4}' | grep -qE '(^|:|])6443$'; then
+    set -euo pipefail
+    for i in $(seq 1 60); do
+      if curl -sf --cacert /etc/kubernetes/pki/ca.crt \
+        --cert /etc/kubernetes/pki/apiserver-kubelet-client.crt \
+        --key /etc/kubernetes/pki/apiserver-kubelet-client.key \
+        "https://127.0.0.1:6443/readyz" >/dev/null 2>&1; then
+        echo "kube-apiserver is ready"
         exit 0
       fi
       sleep 2
     done
-    exit 1
-  args: { executable: /bin/bash }
-  register: apiserver_listen
-  changed_when: false
+    echo "kube-apiserver not ready"; exit 1
   become: true
-  when: inventory_hostname == groups['k8s_masters'][0]
-# --- NEW: Wait /readyz robuste (essaie IP dérivée puis 127.0.0.1) ---
+
 - name: Wait for API server /readyz to return ok (robust)
   ansible.builtin.shell: |
     set -euo pipefail

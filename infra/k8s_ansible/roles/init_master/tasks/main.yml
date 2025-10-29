@@ -1,0 +1,44 @@
+---
+# init_master/tasks/main.yml
+- name: Check if cluster already initialized
+  ansible.builtin.stat:
+    path: "{{ containerd_kubeconfig_admin_path | default('/etc/kubernetes/admin.conf') }}"
+  register: kubeadm_config
+  become: true
+  tags: [init_master]
+
+- name: Initialize control-plane (skip kube-proxy)
+  ansible.builtin.command:
+    cmd: kubeadm init --config=/root/kubeadm-config.yaml --skip-phases=addon/kube-proxy
+  args:
+    creates: "{{ containerd_kubeconfig_admin_path | default('/etc/kubernetes/admin.conf') }}"
+  when:
+    - inventory_hostname == groups['k8s_masters'][0]
+    - not kubeadm_config.stat.exists
+  become: true
+  tags: [init_master]
+
+- name: Stat kube-apiserver manifest
+  ansible.builtin.stat:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: apiserver_manifest
+  become: true
+  tags: [init_master]
+
+- name: Wait for apiserver /readyz to return ok
+  ansible.builtin.shell: |
+    set -euo pipefail
+    for i in $(seq 1 60); do
+      if curl -sf --cacert /etc/kubernetes/pki/ca.crt \
+         --cert /etc/kubernetes/pki/apiserver-kubelet-client.crt \
+         --key /etc/kubernetes/pki/apiserver-kubelet-client.key \
+         "https://127.0.0.1:6443/readyz" >/dev/null 2>&1; then
+        exit 0
+      fi
+      sleep 2
+    done
+    exit 1
+  args: { executable: /bin/bash }
+  changed_when: false
+  become: true
+  tags: [init_master]

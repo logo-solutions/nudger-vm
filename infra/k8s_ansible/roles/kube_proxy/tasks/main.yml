@@ -1,0 +1,21 @@
+---
+# kube_proxy/tasks/main.yml
+- name: Restart kube-proxy
+  ansible.builtin.command:
+    cmd: kubectl -n kube-system rollout restart ds/kube-proxy
+  environment:
+    KUBECONFIG: "/etc/kubernetes/admin.conf"
+  become: true
+  tags: [kube_proxy]
+
+- name: Wait for kube-proxy to be ready
+  ansible.builtin.command: kubectl -n kube-system rollout status ds/kube-proxy --timeout=5m
+  environment:
+    KUBECONFIG: "/etc/kubernetes/admin.conf"
+  register: kube_proxy_rollout
+  changed_when: false
+  retries: 5
+  delay: 10
+  until: kube_proxy_rollout.rc == 0
+  become: true
+  tags: [kube_proxy]

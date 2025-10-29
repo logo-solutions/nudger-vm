@@ -1,0 +1,21 @@
+---
+# flannel/tasks/main.yml
+- name: Apply Flannel CNI
+  ansible.builtin.shell: |
+    kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+  environment:
+    KUBECONFIG: "/etc/kubernetes/admin.conf"
+  become: true
+  tags: [flannel]
+
+- name: Wait for Flannel DaemonSet to be ready
+  ansible.builtin.command: kubectl -n kube-flannel rollout status ds/kube-flannel-ds --timeout=5m
+  environment:
+    KUBECONFIG: "/etc/kubernetes/admin.conf"
+  register: flannel_rollout
+  changed_when: false
+  retries: 5
+  delay: 10
+  until: flannel_rollout.rc == 0
+  become: true
+  tags: [flannel]
