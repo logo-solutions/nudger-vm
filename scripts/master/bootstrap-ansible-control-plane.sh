@@ -199,8 +199,3 @@ PY
 
 ok "Installation terminée !"
 
-echo
-echo "🔹 Pour commencer :"
-echo "    source \"$ANSIBLE_VENV/bin/activate\""
-echo "    cd ~/nudger-vm/infra/k8s_ansible"
-echo "    ansible-playbook -i inventory.ini playbooks/nudger.yml"
