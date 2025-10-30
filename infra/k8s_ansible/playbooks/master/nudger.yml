@@ -7,5 +7,7 @@
   import_playbook: 02-infra_containerd.yml
 - name: 03-kubernetes.yml
   import_playbook: 03-kubernetes.yml
-- name: 03-B-k8s-users.yml
-  import_playbook: 03-B-k8s-users.yml
+- name: 04-kubernetes-users.yml
+  import_playbook: 04-kubernetes-users.yml
+- name: 05-sync_kubeconfig.yml
+  import_playbook: 05-sync_kubeconfig.yml

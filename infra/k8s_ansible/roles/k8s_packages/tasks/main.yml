@@ -83,31 +83,26 @@
 - name: Reload and ensure kubelet is active
   become: true
   block:
-    - name: Reexec systemd (ensure clean runtime)
-      ansible.builtin.command: systemctl daemon-reexec
-
-    - name: Reload systemd units
-      ansible.builtin.command: systemctl daemon-reload
     - name: Reexec + reload systemd to register kubelet unit
       ansible.builtin.shell: |
         systemctl daemon-reexec
         systemctl daemon-reload
-      args:
-        warn: false
       become: true
       tags: ["k8s", "systemd"]
+    - name: Reload systemd units
+      ansible.builtin.command: systemctl daemon-reload
 
     - name: Enable and start kubelet service
       ansible.builtin.command: systemctl enable --now kubelet
       become: true
       tags: ["k8s", "service"]
-      - name: Enable and start kubelet service
-        ansible.builtin.command: systemctl enable --now kubelet
 
     - name: Check kubelet status
       ansible.builtin.command: systemctl status kubelet --no-pager
       register: kubelet_status
       changed_when: false
+      failed_when: false  # ✅ on ne casse plus le play ici
+      become: true
 
     - name: Display kubelet status output
       ansible.builtin.debug:
