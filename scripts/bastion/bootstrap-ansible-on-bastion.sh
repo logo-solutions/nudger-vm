@@ -83,6 +83,7 @@ ansible-galaxy collection install \
   community.general \
   community.crypto \
   community.hashi_vault \
+  community.kubernetes \
   --force
 
 # Depuis requirements.yml si présent

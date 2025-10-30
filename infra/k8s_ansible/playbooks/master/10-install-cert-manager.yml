@@ -1,6 +1,0 @@
----
-- name: Installer cert-manager avec Helm
-  hosts: k8s_masters
-  become: true
-  roles:
-    - cert_manager
