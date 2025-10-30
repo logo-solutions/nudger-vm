@@ -34,52 +34,6 @@ kubectl_completion_enable: true
 # Ne clone pas des repos utilisateurs tant que l’SSH n’est pas prêt
 users_clone_repos: false
 # ===========================
-#  FLUXCD (INSTALL)
-# ===========================
-flux_namespace: "flux-system"
-flux_version: "2.3.0"
-# (optionnel mais recommandé) SHA256 de l’archive flux pour intégrité
-# flux_checksum: "sha256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-flux_bin: "/usr/local/bin/flux"
-# Intervalles de reconciliation
-git_sync_interval: "15m" # GitRepository
-kustomize_interval: "1m" # Kustomization root(s)
-# Timeout par défaut pour Kustomization (évite les "context deadline exceeded")
-kustomize_timeout: "5m"
-# Secret Git utilisé par Flux pour accéder au repo GitOps
-git_secret_name: "gitops-credentials"
-# ===========================
-#  REPO GITOPS (UNIQUE)
-# ===========================
-gitops:
-  github_owner: "loicgo29" # <— TON org/user GitHub
-  github_repo: "nudger-gitops" # <— TON repo GitOps live
-  branch: "main"
-  # Choisir UNE méthode d’auth :
-  use_github_pat: true # HTTPS + PAT (simple)
-  use_deploy_key: false # SSH deploy key (sinon false)
-# URLs du repo GitOps (construites depuis ci-dessus)
-git_https_url: "https://github.com/{{ gitops.github_owner }}/{{ gitops.github_repo
-  }}.git"
-git_ssh_url: "git@github.com:{{ gitops.github_owner }}/{{ gitops.github_repo }}.git"
-# ===========================
-#  AUTHENT / SECRETS
-# ===========================
-# Idéalement fournis par Ansible Vault (vault_github_pat, etc.)
-github:
-  pat: "{{ vault_github_pat | default('') }}" # PAT avec scope repo en lecture
-  repo_ssh_url: "{{ git_ssh_url }}"
-  deploy_key_private: "{{ vault_git_deploy_key_private | default('') }}"
-  deploy_key_public: "{{ vault_git_deploy_key_public  | default('') }}"
-# ===========================
-#  ENVIRONNEMENTS GITOPS
-# ===========================
-# Kustomization(s) racine(s). Commence simple avec "lab".
-gitops_envs:
-  - "lab"
-  # - "staging"
-  # - "prod"
-# ===========================
 #  BINAIRES / DIVERS
 # ===========================
 bin_dir: "/usr/local/bin"
@@ -89,12 +43,7 @@ kubeconfig_user_path: "/home/{{ ansible_user }}/.kube/config"
 # Pour compat ascendante si certains rôles lisent directement cette var
 github_pat: "{{ vault_github_pat | default('') }}"
 k8s_version: "1.31.13-1.1"
-kubernetes_packages:
-  - "kubeadm={{ k8s_version }}"
-  - "kubelet={{ k8s_version }}"
-  - "kubectl={{ k8s_version }}"
-
-
+k8s_minor_local: "1.31"
 egress_nat_pod_cidr: "10.244.0.0/24"
 egress_nat_svc_cidr: "10.96.0.0/12"
 

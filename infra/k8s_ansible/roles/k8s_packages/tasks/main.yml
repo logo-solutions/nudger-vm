@@ -1,11 +1,59 @@
+
 ---
-# k8s_packages/tasks/main.yml
+- name: Derive minor (M.m) from k8s_version (no regex)
+  ansible.builtin.set_fact:
+    k8s_version: "{{ k8s_version | default('1.31') }}"  # Définir k8s_version si nécessaire
+    k8s_minor_local: "{{ (k8s_version.split('.')[0:2] | join('.')) }}"
+- name: Ensure apt keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+  tags: ["k8s", "repo"]
+
+- name: Download Kubernetes Release key (ASCII)
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor_local }}/deb/Release.key"
+    dest: /tmp/kubernetes-release.asc
+    mode: "0644"
+  become: true
+  tags: ["k8s", "repo"]
+
+- name: Convert Release key to binary keyring
+  ansible.builtin.command: >
+    gpg --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg /tmp/kubernetes-release.asc
+  args:
+    creates: "/etc/apt/keyrings/kubernetes-archive-keyring.gpg"
+  become: true
+  tags: ["k8s", "repo"]
+
+
+- name: Sanity print K8s vars
+  ansible.builtin.debug:
+    msg:
+      k8s_version: "{{ k8s_version | default('UNDEF') }}"
+      k8s_minor: "{{ k8s_minor_local | default('UNDEF') }}"
+      key_url: "{{ kubernetes_gpg_key_url | default('UNDEF') }}"
+      repo: "{{ kubernetes_repo | default('UNDEF') }}"
+
+- name: Add Kubernetes APT repository (pkgs.k8s.io)
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor_local }}/deb/ /"
+    filename: kubernetes
+    state: present
+    update_cache: true
+  become: true
+  tags: ["k8s", "repo"]
+
+
+
 - name: Install Kubernetes tools
   ansible.builtin.apt:
     name:
-      - kubeadm
-      - kubelet
-      - kubectl
+      - "kubeadm=1.31.13-1.1"
+      - "kubelet=1.31.13-1.1"
+      - "kubectl=1.31.13-1.1"
     state: present
     update_cache: true
   become: true
@@ -32,3 +80,35 @@
   register: kubelet_status
   failed_when: kubelet_status.rc != 0
   tags: [k8s_packages]
+- name: Reload and ensure kubelet is active
+  become: true
+  block:
+    - name: Reexec systemd (ensure clean runtime)
+      ansible.builtin.command: systemctl daemon-reexec
+
+    - name: Reload systemd units
+      ansible.builtin.command: systemctl daemon-reload
+    - name: Reexec + reload systemd to register kubelet unit
+      ansible.builtin.shell: |
+        systemctl daemon-reexec
+        systemctl daemon-reload
+      args:
+        warn: false
+      become: true
+      tags: ["k8s", "systemd"]
+
+    - name: Enable and start kubelet service
+      ansible.builtin.command: systemctl enable --now kubelet
+      become: true
+      tags: ["k8s", "service"]
+      - name: Enable and start kubelet service
+        ansible.builtin.command: systemctl enable --now kubelet
+
+    - name: Check kubelet status
+      ansible.builtin.command: systemctl status kubelet --no-pager
+      register: kubelet_status
+      changed_when: false
+
+    - name: Display kubelet status output
+      ansible.builtin.debug:
+        var: kubelet_status.stdout

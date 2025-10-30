@@ -1,5 +1,5 @@
+
 ---
-# prep/tasks/main.yml
 - name: Ensure br_netfilter kernel module is loaded
   community.general.modprobe:
     name: br_netfilter
@@ -17,18 +17,21 @@
   loop: "{{ containerd_sysctl_params | dict2items }}"
   become: true
   tags: [preflight]
-
 - name: Disable swap immediately
-  ansible.builtin.command:
-    cmd: swapoff -a
-  become: true
+  ansible.builtin.command: swapoff -a
   when: ansible_swaptotal_mb | int > 0
+  become: true
+  changed_when: false
   tags: [preflight]
-
-- name: Ensure swap is disabled on boot
+- name: Ensure swap is disabled on boot (comment fstab entries)
   ansible.builtin.replace:
     path: /etc/fstab
     regexp: "^\\s*([^#]\\S+\\s+\\S+\\s+swap\\s+\\S+.*)$"
     replace: "# \\1"
   become: true
   tags: [preflight]
+- name: Ensure /etc/containerd directory exists
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'

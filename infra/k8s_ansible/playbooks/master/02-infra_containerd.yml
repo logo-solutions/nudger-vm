@@ -3,7 +3,12 @@
   collections:
     - ansible.posix
     - community.general
+
   roles:
-    - containerd
-  tags:
-    - "02"
+    - { role: prep,            tags: ["1_prep", "1"] }            # 1️⃣ Préparation du système
+    - { role: containerd,      tags: ["2_containerd", "2"] }      # 2️⃣ Installation & config de containerd
+    - { role: k8s_packages,    tags: ["3_k8s_packages", "3"] }    # 3️⃣ Installation des binaires kubeadm/kubelet/kubectl
+    - { role: init_master,     tags: ["4_init_master", "4"] }     # 4️⃣ Initialisation du master
+    - { role: flannel,         tags: ["5_flannel", "5"] }         # 5️⃣ CNI - déploiement de Flannel
+    - { role: kube_proxy,      tags: ["6_kube_proxy", "6"] }      # 6️⃣ kube-proxy - installation et validation
+    - { role: kubeconfig_user, tags: ["7_kubeconfig_user", "7"] } # 7️⃣ Copie du kubeconfig utilisateur

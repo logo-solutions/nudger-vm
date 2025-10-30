@@ -1,14 +1,8 @@
----
-# pkgs.k8s.io uses per-minor repos and a keyring
-
-# Added by rename_role_var.sh (from vars/main.yml)
+# defaults/main.yml
+containerd_version: "1.4.9"
+containerd_bin_dir: "/usr/local/bin"
+containerd_config_dir: "/etc/containerd"
 containerd_sysctl_params:
-  net.bridge.bridge-nf-call-iptables: 1
-  net.ipv4.ip_forward: 1
-  vm.swappiness: 0
-
-# Added by rename_role_var.sh (from vars/main.yml)
-containerd_kubeconfig_path: "/etc/kubernetes/admin.conf"
-
-# Added by rename_role_var.sh (from vars/main.yml)
-containerd_kubeconfig_admin_path: "{{ containerd_kubeconfig_path | default('/etc/kubernetes/admin.conf') }}"
+  net.ipv4.ip_forward: "1"
+  net.bridge.bridge-nf-call-iptables: "1"
+containerd_kubeconfig_admin_path: "/etc/kubernetes/admin.conf"
