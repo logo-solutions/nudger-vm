@@ -62,10 +62,12 @@ curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /etc/apt/ke
 cat >/etc/apt/sources.list.d/hashicorp.list <<'EOF'
 deb [signed-by=/etc/apt/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com jammy main
 EOF
+log "Installation de terraform"
 apt_retry update
 apt_retry install -y terraform
 
 # ─────────────────── Helm ───────────────────
+log "Installation de helm"
 snap install helm --classic
 
 # ─────────────────── yq ───────────────────
@@ -145,12 +147,8 @@ ok "Collections Ansible OK"
 
 # ─────────────────── Outils confort ───────────────────
 if [[ ! -d "$HOME/.fzf" ]]; then
-  log "Installation fzf"
   git clone -q --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
   "$HOME/.fzf/install" --all >/dev/null
-  ok "fzf installé"
-else
-  ok "fzf déjà présent"
 fi
 
 if ! command -v lazygit >/dev/null 2>&1 && ! command -v "$HOME/bin/lazygit" >/dev/null 2>&1; then

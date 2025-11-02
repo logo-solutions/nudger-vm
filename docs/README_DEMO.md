@@ -64,6 +64,7 @@ export BW_SESSION=$(bw unlock --raw)
 cat /etc/arc/arc_env.sh
 ./scripts/20_install_arc.sh
 k get all -n arc
+k get po -n arc -l app=mysql -w
 ./scripts/35_verify_arc_github.sh
 ./scripts/36_verify_arc_full.sh
 
@@ -74,9 +75,10 @@ ls base/
  ls overlays/integration/
  k apply -k overlays/integration/
  k get all -n integration
+k get po -n integration -w
 
 cd ~/nudger-infra/manifests/recovery_mysql && ls
 k create -f mysql-recovery-deployment.yaml
-k get po -n integration -l app=mysql-recovery -w
+k get po -n integration -l app=mysql -w
  ./import-mysql.sh
 
