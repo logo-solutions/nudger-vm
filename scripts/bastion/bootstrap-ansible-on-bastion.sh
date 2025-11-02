@@ -32,7 +32,7 @@ terraform version
 cd -
 # Nettoyage ancien binaire
 rm -f /usr/local/bin/bw
-
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 # Téléchargement de la dernière version stable (ZIP)
 curl -L "https://vault.bitwarden.com/download/?app=cli&platform=linux" -o /tmp/bw.zip
 
