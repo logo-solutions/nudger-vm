@@ -121,14 +121,6 @@ fi
 echo ""
 if [[ "$FAIL" -eq 0 ]]; then
   echo "✅ Sanity check terminé : tous les prérequis critiques sont présents."
-  echo "📝 Prochaines étapes :"
-  echo "   cd ~/nudger-vm/"
-  echo "   AUTO_COMMIT=1 \\"
-  echo "   HCLOUD_TOKEN=\"\$HCLOUD_TOKEN\" \\"
-  echo "   KEY_NAME=hetzner-bastion \\"
-  echo "   KEY_PATH=\"\$HOME/.ssh/hetzner-bastion\" \\"
-  echo "   ./create-VM/vps/create-vm-bastion.sh --recreate"
-  echo "   ./scripts/bastion/post-install-host.sh"
   exit 0
 else
   echo "❌ Sanity check terminé avec des erreurs. Corrigez les points ci-dessus puis relancez."
