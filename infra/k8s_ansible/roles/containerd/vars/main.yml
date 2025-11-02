@@ -1,11 +1,5 @@
+
 ---
-# === Kubernetes version (dérivée de group_vars/all.yml) ===
-# Paquets K8s
-k8s_packages:
-  - kubeadm
-  - kubelet
-  - kubectl
-# === Containerd (config conseillée pour K8s) ===
 containerd_config: |
   version = 2
   [plugins."io.containerd.grpc.v1.cri"]
@@ -16,5 +10,3 @@ containerd_config: |
         runtime_type = "io.containerd.runc.v2"
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
           SystemdCgroup = true
-# === Sysctl ===
-# === Kubeconfig ===

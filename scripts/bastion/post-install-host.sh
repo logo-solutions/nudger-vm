@@ -7,14 +7,13 @@ set -o errtrace
 # post-install-host.sh (version simplifiée)
 # - Prépare le bastion fraîchement créé
 # - Lit l'inventory pour récupérer IP/clé/user
-# - Crée /etc/github-app et copie la clé si fournie
+# - Installe Bitwarden CLI sur le bastion si nécessaire via APT
 # ----------------------------------------
 
 # ----- Config -----
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 INVENTORY="${INVENTORY:-$REPO_ROOT/infra/k8s_ansible/inventory.ini}"
-GITHUB_APP_KEY_PATH="${GITHUB_APP_KEY_PATH:-${1:-}}"
 
 # ----- Helpers -----
 die(){ echo "❌ $*" >&2; exit 1; }
@@ -24,59 +23,87 @@ ok(){ echo "✅ $*"; }
 trap 'die "Échec à la ligne $LINENO (cmd: ${BASH_COMMAND:-?})"' ERR
 
 # ----- Préchecks -----
+info "Vérification des prérequis..."
+
+# Vérifier l'existence de l'inventaire
 [[ -f "$INVENTORY" ]] || die "Inventory introuvable: $INVENTORY"
-for bin in ssh scp awk ssh-keygen; do
+
+# Vérifier que les commandes nécessaires sont présentes
+for bin in ssh scp awk ssh-keygen bw; do
   command -v "$bin" >/dev/null 2>&1 || die "Commande requise introuvable: $bin"
 done
+ok "Tous les prérequis sont installés."
 
 # ----- Lire bastion dans inventory -----
+# Extraction des informations du bastion depuis l'inventaire
 BASTION_LINE="$(awk '
   $0 ~ /^\[bastion\]/ { inb=1; next }
   inb && NF && $1 !~ /^\[/ { print; exit }
 ' "$INVENTORY")"
 
 [[ -n "${BASTION_LINE:-}" ]] || die "Entrée [bastion] introuvable ou vide dans $INVENTORY"
+ok "Informations sur le bastion lues avec succès."
 
+# Fonction pour récupérer les valeurs à partir de l'inventaire
 get_kv(){ echo "$BASTION_LINE" | tr ' ' '\n' | awk -F= -v k="$1" '$1==k{print $2; found=1} END{exit !found}'; }
 
+# Récupération des valeurs depuis l'inventaire
 BASTION_HOST="${BASTION_HOST:-$(get_kv ansible_host 2>/dev/null || true)}"
 BASTION_USER="${BASTION_USER:-$(get_kv ansible_user 2>/dev/null || echo root)}"
 BASTION_KEY="${BASTION_KEY:-$(get_kv ansible_ssh_private_key_file 2>/dev/null || echo "$HOME/.ssh/hetzner-bastion")}"
 
+# Vérification que les informations du bastion sont bien présentes
 [[ -n "$BASTION_HOST" ]] || die "ansible_host absent dans [bastion]"
 [[ -f "$BASTION_KEY" ]] || die "Clé privée absente: $BASTION_KEY"
 
+# Configuration SSH
 SSH_OPTS=(-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$BASTION_KEY")
 
 info "Préparation du bastion: ${BASTION_USER}@${BASTION_HOST}"
 
 # ----- Test SSH -----
+info "Test de connexion SSH..."
+# Nettoyer la clé existante si elle existe dans le fichier known_hosts
 ssh-keygen -R "$BASTION_HOST" >/dev/null 2>&1 || true
+# Essayer de se connecter via SSH
 ssh "${SSH_OPTS[@]}" "${BASTION_USER}@${BASTION_HOST}" 'echo "Connexion OK"'
 ok "Connexion SSH fonctionnelle"
+info "Copie des clés SSH sur le bastion..."
+scp "${SSH_OPTS[@]}" "$HOME/.ssh/hetzner-bastion.pub" "${BASTION_USER}@${BASTION_HOST}:/root/.ssh/hetzner-bastion.pub"
+scp "${SSH_OPTS[@]}" "$HOME/.ssh/hetzner-bastion" "${BASTION_USER}@${BASTION_HOST}:/root/.ssh/hetzner-bastion"
+ssh "${SSH_OPTS[@]}" "${BASTION_USER}@${BASTION_HOST}" 'chmod 600 /root/.ssh/hetzner-bastion && chmod 644 /root/.ssh/hetzner-bastion.pub'
+ok "Clés SSH copiées sur le bastion."
+# ----- Copier la clé GitHub App vers le bastion -----
+info "Transfert de la clé GitHub App vers le bastion..."
 
-# ----- Créer /etc/github-app -----
-ssh "${SSH_OPTS[@]}" "${BASTION_USER}@${BASTION_HOST}" 'sudo mkdir -p /etc/github-app && sudo chmod 700 /etc/github-app'
-
-# ----- Copier clé GitHub App si fournie -----
-if [[ -n "$GITHUB_APP_KEY_PATH" ]]; then
-  [[ -f "$GITHUB_APP_KEY_PATH" ]] || die "Clé GitHub App introuvable: $GITHUB_APP_KEY_PATH"
-  scp "${SSH_OPTS[@]}" "$GITHUB_APP_KEY_PATH" "${BASTION_USER}@${BASTION_HOST}:/tmp/nudger-vm.private-key.pem"
-  ssh "${SSH_OPTS[@]}" "${BASTION_USER}@${BASTION_HOST}" 'sudo mv /tmp/nudger-vm.private-key.pem /etc/github-app/nudger-vm.private-key.pem && sudo chown root:root /etc/github-app/nudger-vm.private-key.pem && sudo chmod 600 /etc/github-app/nudger-vm.private-key.pem'
-  ok "Clé GitHub App déployée dans /etc/github-app/nudger-vm.private-key.pem"
+if [[ -f "/etc/github-app/nudger-vm.private-key.pem" ]]; then
+  warn "⚠️  Une clé GitHub App existe déjà localement, on l'utilise."
 else
-  info "Pas de clé GitHub App fournie → étape ignorée"
+  # Exemple : récupération depuis Bitwarden si absente localement
+  info "Récupération de la clé GitHub App depuis Bitwarden..."
+  bw get item "cle_github_app" | jq -r '.notes' > /tmp/github-app-private-key.pem
+  ok "Clé GitHub App récupérée depuis Bitwarden."
 fi
 
+# Transfert vers le bastion
+scp "${SSH_OPTS[@]}" /tmp/github-app-private-key.pem "${BASTION_USER}@${BASTION_HOST}:/tmp/nudger-vm.private-key.pem"
+ok "Clé transférée sur le bastion (/tmp/nudger-vm.private-key.pem)"
+
+# Déplacement et sécurisation sur le bastion
+ssh "${SSH_OPTS[@]}" "${BASTION_USER}@${BASTION_HOST}" <<'EOF'
+sudo mkdir -p /etc/github-app
+sudo mv /tmp/nudger-vm.private-key.pem /etc/github-app/nudger-vm.private-key.pem
+sudo chown root:root /etc/github-app/nudger-vm.private-key.pem
+sudo chmod 600 /etc/github-app/nudger-vm.private-key.pem
+EOF
+
+ok "Clé GitHub App copiée et sécurisée sur le bastion (/etc/github-app/nudger-vm.private-key.pem)"
 # ----- Fin -----
 ok "Bastion prêt."
 echo
 info "Connexion SSH :"
 echo "ssh ${SSH_OPTS[*]} ${BASTION_USER}@${BASTION_HOST}"
-echo ""
-info "Récupérer **GITHUB_TOKEN (PAT)** depuis Bitwarden."
-info "clone du repo"
-info "~/nudger-vm/create-VM/vps/create-vm-master.sh \
-  -t $HCLOUD_TOKEN \
-  --ssh-key-id 102827339 \
-  --recreate"
+export GITHUB_TOKEN=$(bw get item "github-token-v2" | jq -r '.login.username')
+echo "Commande à executer sur bastion"
+echo "git clone -b fix/20251029-demo3  https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-vm"
+echo "git clone -b fix/20251030-demo3 https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-infra"

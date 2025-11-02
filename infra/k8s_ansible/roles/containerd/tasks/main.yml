@@ -1,15 +1,39 @@
+
 ---
-- name: Import prep.yml
-  ansible.builtin.import_tasks: prep.yml
-- name: Import containerd.yml
-  ansible.builtin.import_tasks: containerd.yml
-- name: Import k8s_packages.yml
-  ansible.builtin.import_tasks: k8s_packages.yml
-- name: Import init_master.yml
-  ansible.builtin.import_tasks: init_master.yml
-- name: Import flannel.yml
-  ansible.builtin.import_tasks: flannel.yml
-- name: Import kube_proxy.yml
-  ansible.builtin.import_tasks: kube_proxy.yml
-- name: Import kubeconfig_user.yml
-  ansible.builtin.import_tasks: kubeconfig_user.yml
+- name: Install containerd
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+    update_cache: true
+  become: true
+  tags: [containerd]
+
+- name: Deploy containerd config
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    content: "{{ containerd_config }}"
+  become: true
+  notify: Restart containerd
+  tags: [containerd]
+
+- name: Ensure containerd is running and enabled
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+    enabled: true
+  become: true
+  tags: [containerd]
+
+- name: Wait for containerd to be running
+  ansible.builtin.shell: |
+    for i in $(seq 1 60); do
+      if systemctl is-active --quiet containerd; then
+        exit 0
+      fi
+      sleep 2
+    done
+    echo "containerd not running"; exit 1
+  become: true
+  register: containerd_status
+  failed_when: containerd_status.rc != 0
+  tags: [containerd]

@@ -1,0 +1,38 @@
+
+---
+# Vérifie si l'utilisateur ansible existe
+- name: Check if 'ansible' user exists
+  ansible.builtin.getent:
+    database: passwd
+    key: ansible
+  register: getent_ansible
+  ignore_errors: true
+
+# Crée le répertoire ~/.kube seulement si l'utilisateur existe
+- name: Ensure /home/ansible/.kube exists
+  ansible.builtin.file:
+    path: /home/ansible/.kube
+    state: directory
+    owner: ansible
+    group: ansible
+    mode: "0700"
+  when: getent_ansible is defined and getent_ansible.getent is defined
+  become: true
+
+# Copie le kubeconfig si le répertoire a été créé
+- name: Copy admin kubeconfig to ansible user
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/ansible/.kube/config
+    owner: ansible
+    group: ansible
+    mode: "0600"
+    remote_src: true
+  when: getent_ansible is defined and getent_ansible.getent is defined
+  become: true
+
+# Fallback root (si l'utilisateur ansible n’existe pas)
+- name: Skip ansible kubeconfig if user not found
+  ansible.builtin.debug:
+    msg: "⚠️  Utilisateur 'ansible' introuvable, copie ignorée (fallback root uniquement)"
+  when: getent_ansible is not defined or getent_ansible.getent is not defined

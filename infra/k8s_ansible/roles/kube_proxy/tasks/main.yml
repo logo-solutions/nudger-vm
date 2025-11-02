@@ -1,0 +1,226 @@
+---
+# ----------------------------
+# kube-proxy
+# ----------------------------
+# --- NEW: lire le manifest de l'apiserver ---
+- name: Read kube-apiserver manifest (for kube-proxy wait)
+  ansible.builtin.slurp:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: apiman_kp
+  become: true
+  when: inventory_hostname == groups['k8s_masters'][0]
+# --- NEW: dériver l'hôte de probe ---
+# --- NEW: dériver l'hôte de probe ---
+- name: Derive apiserver probe host (kube-proxy wait)
+  ansible.builtin.set_fact:
+    apiserver_probe_host_kp: >-
+      {{
+        ((apiman_kp.content | b64decode)
+          | regex_search('--bind-address=([0-9.]+)', '\1')
+          | default(((apiman_kp.content | b64decode)
+                     | regex_search('--advertise-address=([0-9.]+)', '\1')), true)
+          | default(ansible_default_ipv4.address, true))
+        | regex_replace('[\\[\\]]','')
+      }}
+  when: inventory_hostname == groups['k8s_masters'][0]
+# --- NEW: attendre /readyz ---
+# --- NEW: attendre /readyz ---
+- name: Wait for apiserver /readyz (derived host, robust)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    HOSTS="{{ [apiserver_probe_host_kp, ansible_default_ipv4.address, '127.0.0.1'] | unique | join(' ') }}"
+    for i in $(seq 1 60); do
+      for h in $HOSTS; do
+        h_clean="$(printf '%s' "$h" | sed 's/[][]//g')"
+        if curl -sf \
+          --cacert /etc/kubernetes/pki/ca.crt \
+          --cert   /etc/kubernetes/pki/apiserver-kubelet-client.crt \
+          --key    /etc/kubernetes/pki/apiserver-kubelet-client.key \
+          "https://${h_clean}:6443/readyz" >/dev/null 2>&1; then
+          echo ok
+          exit 0
+        fi
+      done
+      sleep 2
+    done
+    exit 1
+  args: { executable: /bin/bash }
+  register: apiready_kp
+  retries: 1
+  delay: 0
+  become: true
+  when: inventory_hostname == groups['k8s_masters'][0]
+- name: Run kubeadm init phase addon kube-proxy
+  ansible.builtin.command: kubeadm init phase addon kube-proxy --v=4
+  environment:
+    KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}"
+  register: kp_phase
+  changed_when: "'applied' in kp_phase.stdout or 'created' in kp_phase.stdout"
+  when: inventory_hostname == groups['k8s_masters'][0]
+  become: true
+- name: Rollout restart kube-proxy
+  ansible.builtin.command: kubectl -n kube-system rollout restart ds/kube-proxy
+  environment: { KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}" }
+  when: inventory_hostname == groups['k8s_masters'][0]
+# Attendre qu'au moins 1 nœud existe
+- name: Wait for nodes to show up
+  ansible.builtin.command: kubectl get nodes --no-headers
+  environment:
+    KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}"
+  register: nodes_list
+  changed_when: false
+  retries: 60
+  delay: 2
+  until: nodes_list.rc == 0 and (nodes_list.stdout | length) > 0
+# Attendre que TOUS les nœuds soient Ready (kubectl >= 1.19)
+- name: Wait for all nodes Ready
+  ansible.builtin.command: kubectl wait --for=condition=Ready nodes --all --timeout=5m
+  environment:
+    KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}"
+  register: nodes_ready
+  changed_when: false
+# (2) Vérifier le kubeconfig du secret kube-proxy (évite 127.0.0.1)
+# --- PRE-WAIT: vérifier que le server du KUBECONFIG répond /readyz ---
+- name: Get cluster server URL from admin kubeconfig
+  ansible.builtin.shell: |
+    set -euo pipefail
+    kubectl config view --kubeconfig="{{ containerd_kubeconfig_admin_path }}" --minify \
+      -o jsonpath='{.clusters[0].cluster.server}'
+  args: { executable: /bin/bash }
+  register: cluster_server_url
+  changed_when: false
+  when: inventory_hostname == groups['k8s_masters'][0]
+
+- name: Wait /readyz on cluster server from kubeconfig
+  ansible.builtin.shell: |
+    set -euo pipefail
+    S="{{ cluster_server_url.stdout }}"
+    H="$(printf '%s' "$S" | sed -E 's#^https?://##; s#:.*$##')"
+    for i in $(seq 1 60); do
+      if curl -sf --cacert /etc/kubernetes/pki/ca.crt \
+         --cert   /etc/kubernetes/pki/apiserver-kubelet-client.crt \
+         --key    /etc/kubernetes/pki/apiserver-kubelet-client.key \
+         "https://${H}:6443/readyz" >/dev/null 2>&1; then
+        exit 0
+      fi
+      sleep 2
+    done
+    exit 1
+  args: { executable: /bin/bash }
+  register: kubeconfig_readyz
+  changed_when: false
+  when: inventory_hostname == groups['k8s_masters'][0]
+  become: true
+
+# --- PATCH du secret kube-proxy, sans validation, avec retries ---
+- name: Normalize kube-proxy kubeconfig server URL (no-validate + retry)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    TMP="$(mktemp)"
+
+    # Crée le secret s'il n'existe pas
+    if ! kubectl -n kube-system get secret kube-proxy >/dev/null 2>&1; then
+      kubectl -n kube-system create secret generic kube-proxy \
+        --from-file=kubeconfig="$KUBECONFIG" \
+        --dry-run=client -o yaml \
+        | kubectl apply --validate=false -f -
+    fi
+
+    # Récupère, patch l’URL du server, ré-applique le secret
+    kubectl -n kube-system get secret kube-proxy -o jsonpath='{.data.kubeconfig}' \
+      | base64 -d > "$TMP"
+
+    proto_host_port="$(printf '%s' "$APISERVER" | sed -E 's#^https?://##')"
+    host="$(printf '%s' "$proto_host_port" | cut -d: -f1)"
+    apiserver="https://${host}:6443"
+    sed -i -E 's#https://([^[:space:]]+?)(:6443)?#'"$apiserver#g" "$TMP"
+
+    # retry 5x en cas de flap API
+    for i in $(seq 1 5); do
+      if kubectl -n kube-system create secret generic kube-proxy \
+           --from-file=kubeconfig="$TMP" \
+           -o yaml --dry-run=client \
+         | kubectl apply --validate=false -f -; then
+        rm -f "$TMP"
+        exit 0
+      fi
+      sleep 2
+    done
+
+    rm -f "$TMP"
+    exit 1
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}"
+    APISERVER: "https://{{ apiserver_endpoint | default(ansible_default_ipv4.address ~ ':6443') }}"
+  register: kp_norm
+  changed_when: "'created' in kp_norm.stdout or 'configured' in kp_norm.stdout"
+  when: inventory_hostname == groups['k8s_masters'][0]
+  become: true
+- name: Untaint control-plane on single-node (no-op if already untainted)
+  ansible.builtin.shell: |
+    kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true
+    kubectl taint nodes --all node-role.kubernetes.io/master- || true
+  when: groups['k8s_masters'] | length == 1
+  environment:
+    KUBECONFIG: "{{ kubeconfig_effective | default(kubeconfig) }}"
+  become: true
+- name: Rollout restart kube-proxy
+  ansible.builtin.command: kubectl -n kube-system rollout restart ds/kube-proxy
+  environment: { KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}" }
+  when: inventory_hostname == groups['k8s_masters'][0]
+- name: Wait for kube-proxy rollout
+  ansible.builtin.command: >
+    kubectl -n kube-system rollout status ds/kube-proxy --timeout=3m
+  environment: { KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}" }
+  when: inventory_hostname == groups['k8s_masters'][0]
+# (3) S’assurer que le DS aura bien quelque chose à programmer
+- name: Check kube-proxy DS desired > 0
+  ansible.builtin.command: kubectl -n kube-system get ds kube-proxy -o jsonpath='{.status.desiredNumberScheduled}'
+  environment:
+    KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}"
+  register: kp_desired
+  changed_when: false
+
+- name: Wait until kube-proxy pods are scheduled and ready
+  ansible.builtin.shell: |
+    kubectl -n kube-system get ds kube-proxy -o jsonpath='{.status.numberReady}/{.status.desiredNumberScheduled}'
+  environment:
+    KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}"
+  register: kp_counts
+  changed_when: false
+  retries: 60
+  delay: 5
+  until: >
+    kp_counts.stdout is match('^\\d+/\\d+$') and
+    (kp_counts.stdout.split('/')[0] | int) >= (kp_counts.stdout.split('/')[1] | int)
+  become: true
+- name: Fail if desiredNumberScheduled == 0 (node NotReady/taints)
+  ansible.builtin.fail:
+    msg: "kube-proxy DS desiredNumberScheduled==0 → node NotReady ou taints. Attends
+      Ready et/ou retire les taints control-plane."
+  when: (kp_desired.stdout | int) == 0
+- name: Wait until kube-proxy pods are scheduled and ready
+  ansible.builtin.shell: >
+    kubectl -n kube-system get ds kube-proxy -o jsonpath='{.status.numberReady}/{.status.desiredNumberScheduled}'
+
+  environment:
+    KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}"
+  register: kp_counts
+  changed_when: false
+  retries: 60
+  delay: 5
+  until: >
+    kp_counts.stdout is match('^\\d+/\\d+$') and (kp_counts.stdout.split('/')[0] |
+    int) >= (kp_counts.stdout.split('/')[1] | int)
+
+  become: true
+- name: Rollout status kube-proxy (final check)
+  ansible.builtin.command: >
+    kubectl -n kube-system rollout status ds/kube-proxy --timeout=6m
+
+  environment:
+    KUBECONFIG: "{{ containerd_kubeconfig_admin_path }}"
+  changed_when: false
+  become: true

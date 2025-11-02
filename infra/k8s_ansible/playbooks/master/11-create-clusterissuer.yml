@@ -1,8 +1,0 @@
-- name: Déployer le ClusterIssuer cert-manager (ACME DNS-01 Cloudflare)
-  hosts: k8s_masters
-  become: yes
-  roles:
-    - cert_manager
-  tasks:
-    - name: Create Cloudflare secret and ClusterIssuer
-      import_tasks: roles/cert_manager/tasks/clusterissuer.yml

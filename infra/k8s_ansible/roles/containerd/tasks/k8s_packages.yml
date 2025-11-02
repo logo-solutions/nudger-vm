@@ -69,13 +69,14 @@
     var: held_pkgs.stdout_lines
 
 - name: Install Kubernetes tools (force upgrade, bypass hold)
-  ansible.builtin.command: >
-    apt-get install -y --allow-change-held-packages
-    kubeadm={{ k8s_version }}
-    kubelet={{ k8s_version }}
-    kubectl={{ k8s_version }}
+  ansible.builtin.apt:
+    name:
+      - "kubeadm={{ k8s_version }}"
+      - "kubelet={{ k8s_version }}"
+      - "kubectl={{ k8s_version }}"◊
+    state: present
+    update_cache: true            # Mets à jour le cache APT avant l'installation
   become: true
-
 - name: Hold kube packages again
   ansible.builtin.command: apt-mark hold kubeadm kubelet kubectl
   become: true

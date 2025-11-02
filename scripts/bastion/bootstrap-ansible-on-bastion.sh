@@ -24,12 +24,31 @@ apt-get install -y --no-install-recommends \
   ruby ruby-dev ca-certificates
 
 cd /tmp
+log "installation terraform"
 wget https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip
 unzip terraform_1.9.8_linux_amd64.zip
 mv terraform /usr/local/bin/
 chmod +x /usr/local/bin/terraform
 terraform version
+ok "terraform version"
 cd -
+log "installation client bitwarden"
+# Nettoyage ancien binaire
+rm -f /usr/local/bin/bw
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# Téléchargement de la dernière version stable (ZIP)
+curl -L "https://vault.bitwarden.com/download/?app=cli&platform=linux" -o /tmp/bw.zip
+
+# Décompression du binaire
+unzip -o /tmp/bw.zip -d /usr/local/bin/
+
+# Donner les droits d’exécution
+chmod +x /usr/local/bin/bw
+
+# Vérification
+/usr/local/bin/bw --version
+
+ok "verification client bitwarden" 
 # --- hcloud CLI (idempotent)
 if ! command -v hcloud >/dev/null 2>&1; then
   log "Installation hcloud CLI"
@@ -69,6 +88,7 @@ ansible-galaxy collection install \
   community.general \
   community.crypto \
   community.hashi_vault \
+  community.kubernetes \
   --force
 
 # Depuis requirements.yml si présent

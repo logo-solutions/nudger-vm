@@ -46,3 +46,24 @@
     enabled: true
   become: true
   tags: [containerd]
+- name: Wait for containerd to be running
+  ansible.builtin.shell: |
+    for i in $(seq 1 60); do
+      if systemctl is-active --quiet containerd; then
+        exit 0
+      fi
+      sleep 2
+    done
+    echo "containerd not running"; exit 1
+  become: true
+- name: Wait for etcd to be running
+  ansible.builtin.shell: |
+    for i in $(seq 1 60); do
+      if crictl ps --name etcd | grep -q Running; then
+        exit 0
+      fi
+      sleep 2
+    done
+    echo "etcd not running"; exit 1
+  become: true
+
