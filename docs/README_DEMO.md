@@ -16,14 +16,13 @@ ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev
 
 ######## BASTION  ###########
 # lancer le git clone avec la sortie du script précedent
-cd nudger-vm &&  git checkout feat/20251029-demo
 /root/nudger-vm/scripts/profile-bashrc/setup-bashrc.sh && exec bash -l
 /root/nudger-vm/scripts/bastion/bootstrap-ansible-on-bastion.sh
 /root/nudger-vm/scripts/bastion/configure-bastion-after-deploy.sh
 bw login
 export BW_SESSION=$(bw unlock --raw)
 ######## MASTER ###################
-/root/nudger-vm/create-VM/vps/create-vm-master.sh 
+cd nudger-vm && /root/nudger-vm/create-VM/vps/create-vm-master.sh 
 ssh -i ~/.ssh/hetzner-bastion root@91.98.16.184 'bash -s' < ~/nudger-vm/scripts/master/bootstrap-ansible-control-plane.sh
 /root/nudger-vm/scripts/master/configure-k8s-master.sh
 ######## APP sur MASTER ###################
