@@ -105,5 +105,5 @@ info "Connexion SSH :"
 echo "ssh ${SSH_OPTS[*]} ${BASTION_USER}@${BASTION_HOST}"
 export GITHUB_TOKEN=$(bw get item "github-token-v2" | jq -r '.login.username')
 echo "Commande à executer sur bastion"
-echo "git clone -b fix/20251029-demo3  https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-vm"
-echo "git clone -b fix/20251030-demo3 https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-infra"
+echo "git clone -b feat/20251103-demo4nov  https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-vm"
+echo "git clone -b feat/20251103-demo4nov https://$GITHUB_TOKEN@github.com/logo-solutions/nudger-infra"
