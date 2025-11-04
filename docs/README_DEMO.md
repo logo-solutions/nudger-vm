@@ -63,7 +63,7 @@ export BW_SESSION=$(bw unlock --raw)
 cat /etc/arc/arc_env.sh
 ./scripts/20_install_arc.sh
 k get all -n arc
-k get po -n arc -l app=mysql -w
+k get po -n arc -w
 ./scripts/35_verify_arc_github.sh
 ./scripts/36_verify_arc_full.sh
 

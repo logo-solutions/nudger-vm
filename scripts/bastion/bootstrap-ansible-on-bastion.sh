@@ -32,6 +32,9 @@ chmod +x /usr/local/bin/terraform
 terraform version
 ok "terraform version"
 cd -
+log "installation kustomize"
+snap install kustomize
+
 log "installation client bitwarden"
 # Nettoyage ancien binaire
 rm -f /usr/local/bin/bw
