@@ -4,7 +4,7 @@ set -o errtrace
 
 # ── Defaults ──────────────────────────────────────────────────────────────
 NAME="${NAME:-bastion}"
-TYPE="${TYPE:-cpx31}"
+TYPE="${TYPE:-cpx22}"
 LOCATION="${LOCATION:-hel1}"
 IMAGE="${IMAGE:-ubuntu-22.04}"
 CONTEXT="${CONTEXT:-nudger}"

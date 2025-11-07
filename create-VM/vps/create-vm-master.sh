@@ -14,7 +14,7 @@ set -o errtrace
 ###############################################################################
 
 NAME="master1"
-TYPE="cpx21"
+TYPE="cpx32"
 LOCATION="nbg1"
 IMAGE="ubuntu-22.04"
 
