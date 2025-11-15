@@ -32,6 +32,9 @@ chmod +x /usr/local/bin/terraform
 terraform version
 ok "terraform version"
 cd -
+log "installation kustomize"
+snap install kustomize
+
 log "installation client bitwarden"
 # Nettoyage ancien binaire
 rm -f /usr/local/bin/bw
@@ -49,6 +52,9 @@ chmod +x /usr/local/bin/bw
 /usr/local/bin/bw --version
 
 ok "verification client bitwarden" 
+log "installatiAon gh pour clone des repo github"
+apt  install gh
+ok "gh terminé"
 # --- hcloud CLI (idempotent)
 if ! command -v hcloud >/dev/null 2>&1; then
   log "Installation hcloud CLI"
