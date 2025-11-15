@@ -1,0 +1,23 @@
+---
+# Ensure k8s_semver is always present (ex: 1.31.13)
+- name: Derive k8s_semver from k8s_version
+  ansible.builtin.set_fact:
+    k8s_semver: "{{ k8s_version.split('-')[0] }}"
+  when:
+    - k8s_version is defined
+    - (k8s_version | length) > 0
+# Get default IP of the master
+- name: Derive local master IP
+  ansible.builtin.set_fact:
+    master_ip: "{{ ansible_default_ipv4.address }}"
+
+# Define control_plane_endpoint (defaults to current master IP :6443)
+- name: Derive control_plane_endpoint
+  ansible.builtin.set_fact:
+    control_plane_endpoint: "{{ master_ip }}:6443"
+  when: control_plane_endpoint is not defined
+# Derive etcd_servers automatically (single-master etcd)
+- name: Derive etcd_servers endpoint
+  ansible.builtin.set_fact:
+    etcd_servers: "https://{{ master_ip }}:2379"
+  when: etcd_servers is not defined

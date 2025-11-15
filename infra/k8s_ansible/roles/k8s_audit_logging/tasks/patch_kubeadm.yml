@@ -1,0 +1,7 @@
+- name: Render kubeadm config with audit logging enabled
+  ansible.builtin.template:
+    src: kubeadm-config-with-audit.j2
+    dest: /root/kubeadm-config-audit.yaml
+    owner: root
+    group: root
+    mode: '0600'

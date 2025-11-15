@@ -1,0 +1,23 @@
+- name: Apply control-plane apiserver phase (regenerate static pod)
+  ansible.builtin.command:
+    cmd: kubeadm init phase control-plane apiserver --config=/root/kubeadm-config-audit.yaml
+  register: apiserver_apply
+  changed_when: "'generated' in apiserver_apply.stdout or apiserver_apply.rc == 0"
+
+# Attente robuste de /readyz
+- name: Wait for kube-apiserver /readyz
+  ansible.builtin.shell: |
+    for i in $(seq 1 60); do
+      if curl -sf --cacert /etc/kubernetes/pki/ca.crt \
+         --cert   /etc/kubernetes/pki/apiserver-kubelet-client.crt \
+         --key    /etc/kubernetes/pki/apiserver-kubelet-client.key \
+         https://127.0.0.1:6443/readyz >/dev/null; then
+        exit 0
+      fi
+      sleep 2
+    done
+    exit 1
+  args:
+    executable: /bin/bash
+  register: apiserver_ready
+  changed_when: false

@@ -1,0 +1,45 @@
+# ClusterConfiguration
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: "{{ k8s_semver }}"
+controlPlaneEndpoint: "{{ control_plane_endpoint }}"
+networking:
+  podSubnet: "{{ pod_subnet }}"
+  serviceSubnet: "{{ service_subnet }}"
+
+apiServer:
+  certSANs:
+{% for san in apiserver_sans %}
+    - "{{ san }}"
+{% endfor %}
+  extraArgs:
+    - name: etcd-servers
+      value: "{{ etcd_servers }}"
+    - name: encryption-provider-config
+      value: "/etc/kubernetes/encryption.yaml"
+    - name: audit-policy-file
+      value: "{{ audit_policy_path }}"
+    - name: audit-log-path
+      value: "{{ audit_log_file }}"
+    - name: audit-log-maxage
+      value: "{{ audit_log_maxage }}"
+    - name: audit-log-maxbackup
+      value: "{{ audit_log_maxbackup }}"
+    - name: audit-log-maxsize
+      value: "{{ audit_log_maxsize }}"
+  extraVolumes:
+    - name: encryption
+      hostPath: "/etc/kubernetes/encryption.yaml"
+      mountPath: "/etc/kubernetes/encryption.yaml"
+      readOnly: true
+      pathType: File
+    - name: audit-policy
+      hostPath: "{{ audit_policy_path }}"
+      mountPath: "{{ audit_policy_path }}"
+      readOnly: true
+      pathType: File
+    - name: audit-logs
+      hostPath: "{{ audit_log_dir }}"
+      mountPath: "{{ audit_log_dir }}"
+      readOnly: false
+      pathType: DirectoryOrCreate
