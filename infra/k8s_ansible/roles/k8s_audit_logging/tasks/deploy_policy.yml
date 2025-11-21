@@ -1,0 +1,15 @@
+- name: Deploy Kubernetes audit policy
+  ansible.builtin.template:
+    src: audit-policy.yaml.j2
+    dest: "{{ audit_policy_path }}"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Ensure audit log directory exists
+  ansible.builtin.file:
+    path: "{{ audit_log_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'

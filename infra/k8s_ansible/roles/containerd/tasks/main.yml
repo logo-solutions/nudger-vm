@@ -1,5 +1,7 @@
 
 ---
+- import_tasks: encryption.yml
+  when: inventory_hostname == groups['k8s_masters'][0]
 - name: Install containerd
   ansible.builtin.apt:
     name: containerd

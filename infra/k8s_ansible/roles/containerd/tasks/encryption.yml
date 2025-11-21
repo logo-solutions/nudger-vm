@@ -1,0 +1,78 @@
+---
+# Générer la clé AES-256 si absente
+- name: Generate AES-256 encryption key
+  shell: "head -c 32 /dev/urandom | base64"
+  register: gen_key
+  when: etcd_encryption_key is not defined
+  changed_when: true
+
+- name: Set generated encryption key
+  set_fact:
+    etcd_encryption_key: "{{ gen_key.stdout }}"
+  when: gen_key is defined
+
+# Déployer /etc/kubernetes/encryption.yaml
+- name: Deploy etcd encryption config
+  template:
+    src: encryption.yaml.j2
+    dest: /etc/kubernetes/encryption.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+
+# Regénérer kubeadm-config.yaml avec le flag encryption
+- name: Render kubeadm-config with encryption enabled
+  template:
+    src: kubeadm-config.j2
+    dest: /root/kubeadm-config.yaml
+    mode: "0644"
+  become: true
+
+# Recréer uniquement le manifest kube-apiserver (safe)
+- name: Apply control-plane apiserver phase
+  command: kubeadm init phase control-plane apiserver --config=/root/kubeadm-config.yaml
+  become: true
+
+# Attendre le redémarrage du kube-apiserver
+- name: Wait for kube-apiserver /readyz (ultra robust)
+  shell: |
+    set -euo pipefail
+
+    HOSTS=(
+      "127.0.0.1"
+      "{{ ansible_default_ipv4.address }}"
+      "{{ inventory_hostname }}"
+    )
+
+    echo "[INFO] Waiting for kube-apiserver to become Ready..."
+
+    for i in $(seq 1 120); do  # 120 * 2s = 4 minutes
+      for h in "${HOSTS[@]}"; do
+        CLEAN_HOST="$(printf '%s' "$h" | sed 's/[][]//g')"
+        URL="https://${CLEAN_HOST}:6443/readyz"
+
+        if curl -sf \
+          --cacert /etc/kubernetes/pki/ca.crt \
+          --cert   /etc/kubernetes/pki/apiserver-kubelet-client.crt \
+          --key    /etc/kubernetes/pki/apiserver-kubelet-client.key \
+          "$URL" >/dev/null 2>&1; then
+          echo "[OK] kube-apiserver Ready on $CLEAN_HOST"
+          exit 0
+        else
+          echo "[WARN] kube-apiserver not ready on $CLEAN_HOST (try $i)"
+        fi
+      done
+      sleep 2
+    done
+
+    echo "[ERROR] kube-apiserver did not become Ready in time."
+    echo "=== kube-apiserver container logs ==="
+    APISRV=$(crictl ps --name kube-apiserver -q | head -n1)
+    [ -n "$APISRV" ] && crictl logs "$APISRV" | tail -n 50 || echo "No container found."
+    exit 1
+  args:
+    executable: /bin/bash
+  register: apiready
+  changed_when: false
+  become: true

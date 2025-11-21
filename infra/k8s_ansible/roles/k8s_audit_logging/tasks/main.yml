@@ -1,0 +1,10 @@
+---
+- include_tasks: facts.yml
+- name: Include audit policy deployment
+  ansible.builtin.include_tasks: deploy_policy.yml
+
+- name: Patch kubeadm for audit logging
+  ansible.builtin.include_tasks: patch_kubeadm.yml
+
+- name: Reload apiserver with audit logging
+  ansible.builtin.include_tasks: reload_apiserver.yml
